@@ -138,6 +138,57 @@ class AlignedTimeSeriesKMeans(ClassifierMixin, BaseEstimator):
         return probs
 
 
+from sktime.clustering.k_medoids import TimeSeriesKMedoids
+from sklearn.base import BaseEstimator, ClassifierMixin
+from sklearn.metrics import accuracy_score
+import numpy as np
+
+# ==========================================
+# K-MEDOIDS CLASSIFIER WRAPPER
+# ==========================================
+class AlignedTimeSeriesKMedoids(ClassifierMixin, BaseEstimator):
+    _estimator_type = "classifier"  # ensures scikit-learn treats it as a classifier
+
+    def __init__(self, n_clusters=2, init_algorithm='random', metric='euclidean',
+                 distance_params=None, averaging_method='mean', random_state=42):
+        self.n_clusters = n_clusters
+        self.init_algorithm = init_algorithm
+        self.metric = metric
+        self.distance_params = distance_params
+        self.averaging_method = averaging_method
+        self.random_state = random_state
+
+    def fit(self, X, y):
+        self.clusterer_ = TimeSeriesKMedoids(
+            n_clusters=self.n_clusters,
+            init_algorithm=self.init_algorithm,
+            metric=self.metric,
+            distance_params=self.distance_params,
+            averaging_method=self.averaging_method,
+            random_state=self.random_state
+        )
+        self.clusterer_.fit(X)
+
+        # Align cluster labels with true labels
+        preds = self.clusterer_.predict(X)
+        self.flip_labels_ = accuracy_score(y, preds) < 0.5
+        self.classes_ = np.unique(y)
+        return self
+
+    def predict(self, X):
+        preds = self.clusterer_.predict(X)
+        if self.flip_labels_:
+            preds = 1 - preds
+        return preds
+
+    def predict_proba(self, X):
+        preds = self.predict(X)
+        probs = np.zeros((len(preds), len(self.classes_)))
+        probs[np.arange(len(preds)), preds] = 1.0
+        return probs
+
+
+
 from sktime.classification.distance_based import ShapeDTW
 
 # ==========================================
@@ -198,7 +249,7 @@ def run_classification_pipeline(
     inner_cv = None,
     outer_cv = None,
     scoring: list = None,
-    refit_metric: str = 'f1',
+    refit_metric: str = 'accuracy',
     window_size: int = 240,
     step_size: int = 120,
     save_dir: str = 'results',
@@ -259,7 +310,7 @@ def run_classification_pipeline(
         "dataset_windows": len(X_raw),
         "unique_patients": len(np.unique(groups)),
         "best_overall_parameters": grid_search.best_params_,
-        "best_overall_score": grid_search.best_score_,
+        "best_validation_score": grid_search.best_score_,
         "nested_cv_metrics": {
             metric: {"mean": np.mean(cv_results[f"test_{metric}"]), "std": np.std(cv_results[f"test_{metric}"])} 
             for metric in scoring
@@ -287,8 +338,9 @@ if __name__ == "__main__":
     TD_PATH = 'data/bbt_RAW_TD_clean.csv'
     UCP_PATH = 'data/bbt_RAW_UCP_clean.csv'
 
-    '''
+    
     # --- RUN 1: K-MEANS (Standard Metrics) ---
+    '''
     kmeans_pipeline = [
         ('inter_hand', InterHandProcessor()),
         ('sktime_formatter', SktimeFormatTransformer()),
@@ -306,10 +358,33 @@ if __name__ == "__main__":
         td_path=TD_PATH, ucp_path=UCP_PATH,
         pipeline_steps=kmeans_pipeline,
         param_grid=kmeans_params,
-        experiment_name='KMeans_Baseline'
+        experiment_name='KMeans_Baseline_Accuracy'
     )
     '''
 
+    kmedoids_pipeline = [
+    ('inter_hand', InterHandProcessor()),       # your inter-hand feature processor
+    ('sktime_formatter', SktimeFormatTransformer()),  # convert to sktime 3D format
+    ('clf', AlignedTimeSeriesKMedoids())        # new K-Medoids wrapper
+]
+
+    kmedoids_params = [{
+        'inter_hand__mode': ['diff', 'asymmetry_index'],
+        'clf__metric': ['euclidean', 'dtw'],
+        'clf__init_algorithm': ['random', 'forgy'],
+        'clf__n_clusters': [2]
+    }]
+
+    run_classification_pipeline(
+        td_path=TD_PATH,
+        ucp_path=UCP_PATH,
+        pipeline_steps=kmedoids_pipeline,
+        param_grid=kmedoids_params,
+        experiment_name='KMedoids_Baseline_Accuracy'
+    )
+
+    
+    '''
     # --- RUN 2: ACTUAL SHAPE-DTW CLASSIFICATION ---
     shapedtw_pipeline = [
         ('inter_hand', InterHandProcessor()),
@@ -321,6 +396,7 @@ if __name__ == "__main__":
         'inter_hand__mode': ['diff', 'asymmetry_index'],
         'clf__shape_descriptor_function': ['raw', 'paa'],
     }]
+    
 
     run_classification_pipeline(
         td_path=TD_PATH, ucp_path=UCP_PATH,
@@ -329,3 +405,4 @@ if __name__ == "__main__":
         experiment_name='ShapeDTW_Direct_Classifier',
         n_jobs=1
     )
+    '''
