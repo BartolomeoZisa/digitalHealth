@@ -71,12 +71,15 @@ class InterHandProcessor(BaseEstimator, TransformerMixin):
 # ==========================================
 # 3. SKTIME DATA FORMATTER
 # ==========================================
+from sktime.datatypes._panel._convert import from_3d_numpy_to_nested
+
 class SktimeFormatTransformer(BaseEstimator, TransformerMixin):
-    def fit(self, X, y=None): 
+    def fit(self, X, y=None):
         return self
         
     def transform(self, X):
-        return np.transpose(X, (0, 2, 1))
+        X = np.transpose(X, (0, 2, 1))
+        return from_3d_numpy_to_nested(X).copy()
 
 # ==========================================
 # 4. SKTIME CLUSTERING-TO-CLASSIFICATION WRAPPER
@@ -280,6 +283,7 @@ if __name__ == "__main__":
     TD_PATH = 'data/bbt_RAW_TD_clean.csv'
     UCP_PATH = 'data/bbt_RAW_UCP_clean.csv'
 
+    '''
     # --- RUN 1: K-MEANS (Standard Metrics) ---
     kmeans_pipeline = [
         ('inter_hand', InterHandProcessor()),
@@ -300,6 +304,7 @@ if __name__ == "__main__":
         param_grid=kmeans_params,
         experiment_name='KMeans_Baseline'
     )
+    '''
 
     # --- RUN 2: ACTUAL SHAPE-DTW CLASSIFICATION ---
     shapedtw_pipeline = [
