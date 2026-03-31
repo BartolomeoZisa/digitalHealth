@@ -1,19 +1,19 @@
 import os
 import json
-import pandas as pd
 import numpy as np
-from sklearn.base import BaseEstimator, TransformerMixin
+import pandas as pd
+from sklearn.base import BaseEstimator, TransformerMixin, ClassifierMixin
 from sklearn.pipeline import Pipeline
 from sklearn.model_selection import GroupKFold, GridSearchCV, cross_validate
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.svm import SVC
-from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import accuracy_score
+
+from sktime.clustering.k_means import TimeSeriesKMeans
 
 # ==========================================
 # 1. PAIRED WINDOWING
 # ==========================================
 class PairedSignalWindower:
-    def __init__(self, window_size=320, step_size=160):
+    def __init__(self, window_size=240, step_size=120):
         self.window_size = window_size
         self.step_size = step_size
 
@@ -38,7 +38,8 @@ class PairedSignalWindower:
                 y_labels.append(label)
                 groups.append(pid)
                 
-        return np.array(X_paired), np.array(y_labels), np.array(groups)
+        # FIXED: Ensure y is explicitly integers so Sklearn doesn't assume Regression
+        return np.array(X_paired), np.array(y_labels, dtype=int), np.array(groups)
 
 # ==========================================
 # 2. INTER-HAND PREPROCESSING
@@ -68,29 +69,111 @@ class InterHandProcessor(BaseEstimator, TransformerMixin):
         return np.array(processed)
 
 # ==========================================
-# 3. FEATURE EXTRACTION
+# 3. SKTIME DATA FORMATTER
 # ==========================================
-class FeatureExtractor(BaseEstimator, TransformerMixin):
-    def fit(self, X, y=None): return self
-    
+class SktimeFormatTransformer(BaseEstimator, TransformerMixin):
+    def fit(self, X, y=None): 
+        return self
+        
     def transform(self, X):
-        features = []
-        for window in X:
-            win_feats = []
-            for channel in range(window.shape[1]):
-                sig = window[:, channel]
-                win_feats.extend([
-                    np.mean(sig), np.std(sig), np.max(sig), 
-                    np.min(sig), np.sqrt(np.mean(sig**2))
-                ])
-            features.append(win_feats)
-        return np.array(features)
+        return np.transpose(X, (0, 2, 1))
+
+# ==========================================
+# 4. SKTIME CLUSTERING-TO-CLASSIFICATION WRAPPER
+# ==========================================
+class AlignedTimeSeriesKMeans(ClassifierMixin, BaseEstimator):
+    
+    # FIXED: Explicitly tell Scikit-Learn this pipeline step is a CLASSIFIER
+    # This stops it from throwing the "Got a regressor with response_method=predict_proba" error
+    _estimator_type = "classifier" 
+
+    def __init__(self, n_clusters=2, init_algorithm='kmeans++', metric='euclidean', 
+                 distance_params=None, averaging_method='mean', random_state=42):
+        self.n_clusters = n_clusters
+        self.init_algorithm = init_algorithm
+        self.metric = metric
+        self.distance_params = distance_params
+        self.averaging_method = averaging_method
+        self.random_state = random_state
+
+    def fit(self, X, y):
+        self.clusterer_ = TimeSeriesKMeans(
+            n_clusters=self.n_clusters,
+            init_algorithm=self.init_algorithm,
+            metric=self.metric,                    
+            distance_params=self.distance_params,  
+            averaging_method=self.averaging_method,
+            random_state=self.random_state
+        )
+        self.clusterer_.fit(X)
+        
+        # Align labels
+        preds = self.clusterer_.predict(X)
+        if accuracy_score(y, preds) < 0.5:
+            self.flip_labels_ = True
+        else:
+            self.flip_labels_ = False
+            
+        self.classes_ = np.unique(y)
+        return self
+    
+    def predict(self, X):
+        preds = self.clusterer_.predict(X)
+        if self.flip_labels_:
+            preds = 1 - preds
+        return preds
+
+    def predict_proba(self, X):
+        # Generates binary probability outputs [0.0, 1.0] to satisfy ROC-AUC requirements
+        preds = self.predict(X)
+        probs = np.zeros((len(preds), len(self.classes_)))
+        probs[np.arange(len(preds)), preds] = 1.0
+        return probs
+
+
+from sktime.classification.distance_based import ShapeDTW
+
+# ==========================================
+# 4. SHAPE-DTW CLASSIFIER WRAPPER
+# ==========================================
+# ==========================================
+# 4. SHAPE-DTW CLASSIFIER WRAPPER (FIXED)
+# ==========================================
+class ShapeDTWClassifier(ClassifierMixin, BaseEstimator):
+    _estimator_type = "classifier"
+
+    def __init__(self, n_neighbors=1, shape_descriptor_function='raw'): # Removed subsequence_distance
+        self.n_neighbors = n_neighbors
+        self.shape_descriptor_function = shape_descriptor_function
+
+    def fit(self, X, y):
+        # We pass only the arguments accepted by sktime's ShapeDTW
+        self.clf_ = ShapeDTW(
+            n_neighbors=self.n_neighbors,
+            shape_descriptor_function=self.shape_descriptor_function,
+        )
+        self.clf_.fit(X, y)
+        self.classes_ = np.unique(y)
+        return self
+
+    def predict(self, X):
+        return self.clf_.predict(X)
+
+    def predict_proba(self, X):
+        # ShapeDTW might not implement predict_proba natively depending on version
+        # If it fails, use the same logic as your KMeans wrapper
+        try:
+            return self.clf_.predict_proba(X)
+        except AttributeError:
+            preds = self.predict(X)
+            probs = np.zeros((len(preds), len(self.classes_)))
+            probs[np.arange(len(preds)), preds.astype(int)] = 1.0
+            return probs
 
 # ==========================================
 # HELPER: Numpy to JSON Encoder
 # ==========================================
 class NumpyEncoder(json.JSONEncoder):
-    """Special json encoder for numpy types"""
     def default(self, obj):
         if isinstance(obj, np.integer): return int(obj)
         elif isinstance(obj, np.floating): return float(obj)
@@ -98,45 +181,30 @@ class NumpyEncoder(json.JSONEncoder):
         return super(NumpyEncoder, self).default(obj)
 
 # ==========================================
-# 4. MAIN PIPELINE EXECUTION
+# 5. MAIN PIPELINE EXECUTION
 # ==========================================
 def run_classification_pipeline(
     td_path: str, 
     ucp_path: str,
-    pipeline_steps: list = None,
-    param_grid: dict = None,
+    pipeline_steps: list,
+    param_grid: list,     
     inner_cv = None,
     outer_cv = None,
     scoring: list = None,
     refit_metric: str = 'f1',
-    window_size: int = 320,
-    step_size: int = 160,
+    window_size: int = 240,
+    step_size: int = 120,
     save_dir: str = 'results',
-    experiment_name: str = 'experiment_1'
+    experiment_name: str = 'sktime_clustering_exp'
 ):
-    """
-    Runs a highly configurable nested cross-validation pipeline and saves results.
-    """
     os.makedirs(save_dir, exist_ok=True)
 
-    # --- Setup Defaults if None ---
-    if pipeline_steps is None:
-        pipeline_steps = [
-            ('inter_hand', InterHandProcessor()),
-            ('extractor', FeatureExtractor()), # Extractor needed to convert 3D to 2D for standard ML
-            ('scaler', StandardScaler()),
-            ('clf', RandomForestClassifier(random_state=42))
-        ]
-    if param_grid is None:
-        param_grid = {
-            'inter_hand__mode': ['diff', 'asymmetry_index'],
-            'clf__n_estimators': [100, 200]
-        }
     if inner_cv is None: inner_cv = GroupKFold(n_splits=5)
     if outer_cv is None: outer_cv = GroupKFold(n_splits=5)
+    
+    # We can safely keep roc_auc now that the classifier tag is fixed
     if scoring is None: scoring = ['accuracy', 'f1', 'roc_auc']
 
-    # --- Load Data ---
     try:
         td, ucp = pd.read_csv(td_path), pd.read_csv(ucp_path)
     except FileNotFoundError as e:
@@ -145,38 +213,37 @@ def run_classification_pipeline(
     td['label'], ucp['label'] = 0, 1
     full_df = pd.concat([td, ucp], ignore_index=True)
 
-    # --- Step 1: Paired Windowing ---
     windower = PairedSignalWindower(window_size=window_size, step_size=step_size)
     X_raw, y, groups = windower.transform(full_df)
     print(f"[{experiment_name}] Paired Dataset: {len(X_raw)} windows from {len(np.unique(groups))} patients.")
 
-    # --- Step 2: Create Pipeline & Search ---
     pipeline = Pipeline(pipeline_steps)
     grid_search = GridSearchCV(
         pipeline, param_grid, cv=inner_cv, 
-        scoring=scoring, refit=refit_metric, n_jobs=-1
+        scoring=scoring, refit=refit_metric, n_jobs=4,
+        error_score='raise', verbose = 2
     )
 
-    # --- Step 3: Nested Cross-Validation (Outer loop) ---
     print(f"Evaluating with Nested CV ({outer_cv.n_splits} splits)...")
-    cv_results = cross_validate(
-        grid_search, X_raw, y, groups=groups, cv=outer_cv, 
-        scoring=scoring, return_train_score=False
-    )
+    
+    try:
+        cv_results = cross_validate(
+            grid_search, X_raw, y, groups=groups, cv=outer_cv, 
+            scoring=scoring, return_train_score=False,
+            params={'groups': groups} 
+        )
+    except TypeError:
+        cv_results = cross_validate(
+            grid_search, X_raw, y, groups=groups, cv=outer_cv, 
+            scoring=scoring, return_train_score=False,
+            fit_params={'groups': groups}
+        )
 
-    # --- Step 4: Final Fit (to get best overall parameters on all data) ---
     grid_search.fit(X_raw, y, groups=groups)
 
-    # --- Step 5: Save Results ---
-    # 5a. Save Nested CV scores to CSV
-    cv_df = pd.DataFrame(cv_results)
-    cv_df.to_csv(os.path.join(save_dir, f"{experiment_name}_nested_cv.csv"), index=False)
+    pd.DataFrame(cv_results).to_csv(os.path.join(save_dir, f"{experiment_name}_nested_cv.csv"), index=False)
+    pd.DataFrame(grid_search.cv_results_).to_csv(os.path.join(save_dir, f"{experiment_name}_grid_search.csv"), index=False)
 
-    # 5b. Save Full Grid Search results to CSV
-    grid_df = pd.DataFrame(grid_search.cv_results_)
-    grid_df.to_csv(os.path.join(save_dir, f"{experiment_name}_grid_search.csv"), index=False)
-
-    # 5c. Compile Summary and save to JSON
     summary = {
         "experiment_name": experiment_name,
         "window_size": window_size,
@@ -186,17 +253,14 @@ def run_classification_pipeline(
         "best_overall_parameters": grid_search.best_params_,
         "best_overall_score": grid_search.best_score_,
         "nested_cv_metrics": {
-            metric: {
-                "mean": np.mean(cv_results[f"test_{metric}"]),
-                "std": np.std(cv_results[f"test_{metric}"])
-            } for metric in scoring
+            metric: {"mean": np.mean(cv_results[f"test_{metric}"]), "std": np.std(cv_results[f"test_{metric}"])} 
+            for metric in scoring
         }
     }
     
     with open(os.path.join(save_dir, f"{experiment_name}_summary.json"), 'w') as f:
         json.dump(summary, f, indent=4, cls=NumpyEncoder)
 
-    # --- Step 6: Print Quick Summary ---
     print("\n" + "="*45)
     print(f"RESULTS FOR: {experiment_name}")
     for metric in scoring:
@@ -207,54 +271,50 @@ def run_classification_pipeline(
     print(f"Best Config (Full Data): {grid_search.best_params_}\n")
 
 
-# ==========================================
-# HOW TO USE THE NEW FUNCTION
-# ==========================================
+
+
+
+
 if __name__ == "__main__":
-    
-    # NOTE: Replace with your actual paths
     TD_PATH = 'data/bbt_RAW_TD_clean.csv'
     UCP_PATH = 'data/bbt_RAW_UCP_clean.csv'
 
+    # --- RUN 1: K-MEANS (Standard Metrics) ---
+    kmeans_pipeline = [
+        ('inter_hand', InterHandProcessor()),
+        ('sktime_formatter', SktimeFormatTransformer()),
+        ('clf', AlignedTimeSeriesKMeans())
+    ]
+    
+    kmeans_params = [{
+        'inter_hand__mode': ['diff', 'asymmetry_index'],
+        'clf__metric': ['euclidean', 'dtw'],
+        'clf__init_algorithm': ['kmeans++', 'forgy'],
+        'clf__n_clusters': [2]
+    }]
 
-
-    # ---------------------------------------------------------
-    # EXPERIMENT 1: Default Settings (Random Forest)
-    # ---------------------------------------------------------
     run_classification_pipeline(
-        td_path=TD_PATH, 
-        ucp_path=UCP_PATH,
-        experiment_name='Exp1_RandomForest_Default'
+        td_path=TD_PATH, ucp_path=UCP_PATH,
+        pipeline_steps=kmeans_pipeline,
+        param_grid=kmeans_params,
+        experiment_name='KMeans_Baseline'
     )
 
-
-    # ---------------------------------------------------------
-    # EXPERIMENT 2: Custom Pipeline (SVM), Custom Grid & Window
-    # ---------------------------------------------------------
-    svm_pipeline_steps = [
+    # --- RUN 2: ACTUAL SHAPE-DTW CLASSIFICATION ---
+    shapedtw_pipeline = [
         ('inter_hand', InterHandProcessor()),
-        ('extractor', FeatureExtractor()),
-        ('scaler', StandardScaler()),
-        ('clf', SVC(probability=True, random_state=42)) # SVM instead of RF
+        ('sktime_formatter', SktimeFormatTransformer()),
+        ('clf', ShapeDTWClassifier()) # Using the new wrapper
     ]
 
-    svm_param_grid = {
-        'inter_hand__mode': ['diff'],  # test just 'diff'
-        'clf__C': [0.1, 1, 10],        # SVM params
-        'clf__kernel': ['linear', 'rbf']
-    }
+    shapedtw_params = [{
+        'inter_hand__mode': ['diff', 'asymmetry_index'],
+        'clf__shape_descriptor_function': ['raw', 'paa'],
+    }]
 
     run_classification_pipeline(
-        td_path=TD_PATH, 
-        ucp_path=UCP_PATH,
-        pipeline_steps=svm_pipeline_steps,
-        param_grid=svm_param_grid,
-        window_size=200,          # Try a smaller window
-        step_size=100,
-        inner_cv=GroupKFold(n_splits=3), # Custom CV splits
-        outer_cv=GroupKFold(n_splits=3),
-        scoring=['accuracy', 'f1'],      # Custom metrics
-        refit_metric='f1',               # Metric to optimize
-        save_dir='my_custom_results',
-        experiment_name='Exp2_SVM_CustomWindow'
+        td_path=TD_PATH, ucp_path=UCP_PATH,
+        pipeline_steps=shapedtw_pipeline,
+        param_grid=shapedtw_params,
+        experiment_name='ShapeDTW_Direct_Classifier'
     )
