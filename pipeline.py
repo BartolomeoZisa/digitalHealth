@@ -326,5 +326,6 @@ if __name__ == "__main__":
         td_path=TD_PATH, ucp_path=UCP_PATH,
         pipeline_steps=shapedtw_pipeline,
         param_grid=shapedtw_params,
-        experiment_name='ShapeDTW_Direct_Classifier'
+        experiment_name='ShapeDTW_Direct_Classifier',
+        n_jobs=1
     )
