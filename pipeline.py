@@ -6,6 +6,11 @@ from sklearn.base import BaseEstimator, TransformerMixin, ClassifierMixin
 from sklearn.pipeline import Pipeline
 from sklearn.model_selection import GroupKFold, GridSearchCV, cross_validate
 from sklearn.metrics import accuracy_score
+import warnings
+from pandas.errors import PerformanceWarning
+# This silences the specific fragmentation warning from Pandas
+warnings.filterwarnings('ignore', category=PerformanceWarning)
+
 
 from sktime.clustering.k_means import TimeSeriesKMeans
 
@@ -78,8 +83,7 @@ class SktimeFormatTransformer(BaseEstimator, TransformerMixin):
         return self
         
     def transform(self, X):
-        X = np.transpose(X, (0, 2, 1))
-        return from_3d_numpy_to_nested(X).copy()
+        return np.transpose(X, (0, 2, 1))
 
 # ==========================================
 # 4. SKTIME CLUSTERING-TO-CLASSIFICATION WRAPPER
