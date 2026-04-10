@@ -19,7 +19,25 @@ warnings.filterwarnings('ignore', category=PerformanceWarning)
 # 1. PAIRED WINDOWING (SKLEARN-COMPATIBLE)
 # ==========================================
 class PairedSignalWindower(BaseEstimator, TransformerMixin):
+    """
+    Converts raw multi-hand time-series data into paired sliding windows.
+
+    This transformer:
+    - Aligns left (L) and right (R) hand signals by timestamp
+    - Builds fixed-length overlapping windows
+    - Produces paired feature tensors per window
+    - Returns labels and subject/group IDs for grouped CV
+    """
+
     def __init__(self, window_size=240, step_size=120):
+        """
+        Parameters
+        ----------
+        window_size : int
+            Number of time steps per window.
+        step_size : int
+            Step size for sliding window.
+        """
         self.window_size = window_size
         self.step_size = step_size
 
@@ -27,6 +45,28 @@ class PairedSignalWindower(BaseEstimator, TransformerMixin):
         return self
 
     def transform(self, df):
+        """
+        Parameters
+        ----------
+        df : pd.DataFrame
+            Must contain:
+            - id (subject)
+            - session
+            - datetime
+            - hand (L/R)
+            - Accelerometer X/Y/Z (per hand)
+            - label
+
+        Returns
+        -------
+        X_paired : np.ndarray
+            Shape: (n_windows, window_size, 6)
+        y_labels : np.ndarray
+            Window labels
+        groups : np.ndarray
+            Subject IDs for grouped cross-validation
+        """
+
         X_paired, y_labels, groups = [], [], []
 
         df = df.sort_values(['id', 'session', 'datetime'])
@@ -39,6 +79,7 @@ class PairedSignalWindower(BaseEstimator, TransformerMixin):
             if left.empty or right.empty:
                 continue
 
+            # Align both hands on timestamp
             merged = pd.merge(
                 left,
                 right,
@@ -50,6 +91,7 @@ class PairedSignalWindower(BaseEstimator, TransformerMixin):
             if len(merged) < self.window_size:
                 continue
 
+            # Extract accelerometer signals
             L_data = merged[
                 ['Accelerometer X_L', 'Accelerometer Y_L', 'Accelerometer Z_L']
             ].values
@@ -60,10 +102,12 @@ class PairedSignalWindower(BaseEstimator, TransformerMixin):
 
             label = merged['label_L'].iloc[0]
 
+            # Sliding window creation
             for i in range(0, len(merged) - self.window_size + 1, self.step_size):
                 win_L = L_data[i:i + self.window_size]
                 win_R = R_data[i:i + self.window_size]
 
+                # Concatenate left and right hand features
                 X_paired.append(np.hstack([win_L, win_R]))
                 y_labels.append(label)
                 groups.append(pid)
@@ -75,6 +119,15 @@ class PairedSignalWindower(BaseEstimator, TransformerMixin):
 # 2. INTER-HAND PROCESSOR
 # ==========================================
 class InterHandProcessor(BaseEstimator, TransformerMixin):
+    """
+    Computes inter-hand derived signals from paired accelerometer windows.
+
+    Modes:
+    - diff: absolute difference of magnitudes
+    - asymmetry_index: normalized asymmetry measure
+    - default: returns both magnitudes
+    """
+
     def __init__(self, mode='asymmetry_index'):
         self.mode = mode
 
@@ -82,9 +135,23 @@ class InterHandProcessor(BaseEstimator, TransformerMixin):
         return self
 
     def transform(self, X):
+        """
+        Parameters
+        ----------
+        X : np.ndarray
+            Shape: (samples, time, features)
+            Features expected: [L_x, L_y, L_z, R_x, R_y, R_z]
+
+        Returns
+        -------
+        np.ndarray
+            Processed inter-hand representation per window
+        """
+
         processed = []
 
         for window in X:
+            # Compute vector magnitude per hand
             mag_L = np.sqrt(np.sum(window[:, :3] ** 2, axis=1))
             mag_R = np.sqrt(np.sum(window[:, 3:] ** 2, axis=1))
 
@@ -108,11 +175,18 @@ class InterHandProcessor(BaseEstimator, TransformerMixin):
 # 3. SKTIME FORMATTER
 # ==========================================
 class SktimeFormatTransformer(BaseEstimator, TransformerMixin):
+    """
+    Reorders tensor dimensions to match sktime expected format.
+
+    Converts:
+    (samples, time, features)
+        -> (samples, features, time)
+    """
+
     def fit(self, X, y=None):
         return self
 
     def transform(self, X):
-        # (samples, time, features) -> (samples, features, time)
         return np.transpose(X, (0, 2, 1))
 
 
@@ -120,6 +194,10 @@ class SktimeFormatTransformer(BaseEstimator, TransformerMixin):
 # 4. KMEANS WRAPPER (CLUSTERING MODEL)
 # ==========================================
 class AlignedTimeSeriesKMeans(BaseEstimator):
+    """
+    Wrapper around sktime TimeSeriesKMeans for sklearn pipeline compatibility.
+    """
+
     def __init__(self, n_clusters=2, metric="euclidean", init_algorithm="kmeans++"):
         self.n_clusters = n_clusters
         self.metric = metric
@@ -151,6 +229,31 @@ def run_classification_pipeline(
     save_dir,
     experiment_name
 ):
+    """
+    Runs grouped cross-validation pipeline on paired time-series data.
+
+    Steps:
+    1. Load datasets (TD + UCP)
+    2. Generate paired sliding windows
+    3. Build sklearn pipeline
+    4. Evaluate using GroupKFold CV
+    5. Save results to disk
+
+    Parameters
+    ----------
+    td_path : str
+        Path to TD dataset CSV
+    ucp_path : str
+        Path to UCP dataset CSV
+    pipeline_steps : list
+        sklearn Pipeline steps (name, transformer/model)
+    param_grid : dict
+        (Currently unused in this function, reserved for future tuning)
+    save_dir : str
+        Directory to store results
+    experiment_name : str
+        Identifier for experiment logging
+    """
 
     os.makedirs(save_dir, exist_ok=True)
 
