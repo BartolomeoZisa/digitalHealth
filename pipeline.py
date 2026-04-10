@@ -150,12 +150,11 @@ class AlignedTimeSeriesKMedoids(ClassifierMixin, BaseEstimator):
     _estimator_type = "classifier"  # ensures scikit-learn treats it as a classifier
 
     def __init__(self, n_clusters=2, init_algorithm='random', metric='euclidean',
-                 distance_params=None, averaging_method='mean', random_state=42):
+                 distance_params=None, random_state=42):
         self.n_clusters = n_clusters
         self.init_algorithm = init_algorithm
         self.metric = metric
         self.distance_params = distance_params
-        self.averaging_method = averaging_method
         self.random_state = random_state
 
     def fit(self, X, y):
@@ -164,7 +163,6 @@ class AlignedTimeSeriesKMedoids(ClassifierMixin, BaseEstimator):
             init_algorithm=self.init_algorithm,
             metric=self.metric,
             distance_params=self.distance_params,
-            averaging_method=self.averaging_method,
             random_state=self.random_state
         )
         self.clusterer_.fit(X)
@@ -249,7 +247,7 @@ def run_classification_pipeline(
     inner_cv = None,
     outer_cv = None,
     scoring: list = None,
-    refit_metric: str = 'accuracy',
+    refit_metric: str = 'F1',
     window_size: int = 240,
     step_size: int = 120,
     save_dir: str = 'results',
@@ -362,11 +360,12 @@ if __name__ == "__main__":
     )
     '''
 
+    '''
     kmedoids_pipeline = [
     ('inter_hand', InterHandProcessor()),       # your inter-hand feature processor
     ('sktime_formatter', SktimeFormatTransformer()),  # convert to sktime 3D format
     ('clf', AlignedTimeSeriesKMedoids())        # new K-Medoids wrapper
-]
+    ]
 
     kmedoids_params = [{
         'inter_hand__mode': ['diff', 'asymmetry_index'],
@@ -382,6 +381,7 @@ if __name__ == "__main__":
         param_grid=kmedoids_params,
         experiment_name='KMedoids_Baseline_Accuracy'
     )
+    '''
 
     
     '''

@@ -1,2 +1,6 @@
 results/
 old/
+*.pyc
+__pycache__/
+*.egg-info
+venv/
