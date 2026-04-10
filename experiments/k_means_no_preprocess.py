@@ -14,7 +14,7 @@ kmeans_pipeline = [
 ]
 
 kmeans_params = [{
-    'clf__metric': ['euclidean'],
+    'clf__metric': ['euclidean', 'dtw'],
     'clf__init_algorithm': ['kmeans++', 'forgy'],
     'clf__n_clusters': [2]
 }]

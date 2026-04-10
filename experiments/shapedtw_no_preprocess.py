@@ -1,8 +1,7 @@
 from sklearn.pipeline import Pipeline
-from digital_health_project.models.models import AlignedTimeSeriesKMeans, ShapeDTWClassifier
+from digital_health_project.models.models import ShapeDTWClassifier
 from digital_health_project.utils.pipeline import run_classification_pipeline
 from digital_health_project.features.difference_assimmetry import InterHandProcessor, SktimeFormatTransformer, PairedSignalWindower
-from digital_health_project.models import ShapeDTWClassifier
 
 
 TD_PATH = 'data/td/bbt_td_raw_anon.csv'
@@ -24,5 +23,4 @@ run_classification_pipeline(
         pipeline_steps=shapedtw_pipeline,
         param_grid=shapedtw_params,
         experiment_name='ShapeDTW_Direct_Classifier',
-        n_jobs=1
     )

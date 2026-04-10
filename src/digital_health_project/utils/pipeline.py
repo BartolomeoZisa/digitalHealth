@@ -51,7 +51,7 @@ def run_classification_pipeline(
     pipeline = Pipeline(pipeline_steps)
     grid_search = GridSearchCV(
         pipeline, param_grid, cv=inner_cv, 
-        scoring=scoring, refit=refit_metric, n_jobs=-n_jobs,
+        scoring=scoring, refit=refit_metric, n_jobs=n_jobs,
         error_score='raise', verbose = 2
     )
 

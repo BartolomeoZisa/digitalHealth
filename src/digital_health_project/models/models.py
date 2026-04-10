@@ -1,23 +1,48 @@
 import numpy as np
-from sklearn.base import BaseEstimator, TransformerMixin, ClassifierMixin
-from sklearn.metrics import accuracy_score
 import warnings
-from pandas.errors import PerformanceWarning
+
+from sklearn.base import BaseEstimator, ClassifierMixin
+from sklearn.metrics import confusion_matrix
+from scipy.optimize import linear_sum_assignment
+
 from sktime.clustering.k_means import TimeSeriesKMeans
-# This silences the specific fragmentation warning from Pandas
+from sktime.clustering.k_medoids import TimeSeriesKMedoids
+from sktime.classification.distance_based import ShapeDTW
+
+from pandas.errors import PerformanceWarning
+
 warnings.filterwarnings('ignore', category=PerformanceWarning)
 
 
+# =========================================================
+# UTILITY: PROPER CLUSTER -> LABEL ALIGNMENT (HUNGARIAN)
+# =========================================================
+def compute_cluster_mapping(y_true, y_pred):
+    """
+    Returns mapping: cluster_id -> class_label
+    """
+    cm = confusion_matrix(y_true, y_pred)
+
+    row_ind, col_ind = linear_sum_assignment(-cm)
+
+    mapping = {col: row for row, col in zip(row_ind, col_ind)}
+    return mapping
 
 
+def apply_mapping(preds, mapping):
+    return np.array([mapping[p] for p in preds])
+
+
+# =========================================================
+# 1. TIME SERIES KMEANS WRAPPER (FIXED)
+# =========================================================
 class AlignedTimeSeriesKMeans(ClassifierMixin, BaseEstimator):
-    
-    # FIXED: Explicitly tell Scikit-Learn this pipeline step is a CLASSIFIER
-    # This stops it from throwing the "Got a regressor with response_method=predict_proba" error
-    _estimator_type = "classifier" 
+    _estimator_type = "classifier"
 
-    def __init__(self, n_clusters=2, init_algorithm='kmeans++', metric='euclidean', 
-                 distance_params=None, averaging_method='mean', random_state=42):
+    def __init__(self, n_clusters=2, init_algorithm='kmeans++',
+                 metric='euclidean', distance_params=None,
+                 averaging_method='mean', random_state=42):
+
         self.n_clusters = n_clusters
         self.init_algorithm = init_algorithm
         self.metric = metric
@@ -26,53 +51,50 @@ class AlignedTimeSeriesKMeans(ClassifierMixin, BaseEstimator):
         self.random_state = random_state
 
     def fit(self, X, y):
+
         self.clusterer_ = TimeSeriesKMeans(
             n_clusters=self.n_clusters,
             init_algorithm=self.init_algorithm,
-            metric=self.metric,                    
-            distance_params=self.distance_params,  
+            metric=self.metric,
+            distance_params=self.distance_params,
             averaging_method=self.averaging_method,
             random_state=self.random_state
         )
+
         self.clusterer_.fit(X)
-        
-        # Align labels
+
         preds = self.clusterer_.predict(X)
-        if accuracy_score(y, preds) < 0.5:
-            self.flip_labels_ = True
-        else:
-            self.flip_labels_ = False
-            
+
+        # ✅ PROPER ALIGNMENT (NOT FLIPPING)
+        self.label_mapping_ = compute_cluster_mapping(y, preds)
         self.classes_ = np.unique(y)
+
         return self
-    
+
     def predict(self, X):
         preds = self.clusterer_.predict(X)
-        if self.flip_labels_:
-            preds = 1 - preds
-        return preds
+        return apply_mapping(preds, self.label_mapping_)
 
     def predict_proba(self, X):
-        # Generates binary probability outputs [0.0, 1.0] to satisfy ROC-AUC requirements
         preds = self.predict(X)
+
         probs = np.zeros((len(preds), len(self.classes_)))
-        probs[np.arange(len(preds)), preds] = 1.0
+        for i, p in enumerate(preds):
+            probs[i, np.where(self.classes_ == p)[0][0]] = 1.0
+
         return probs
 
 
-from sktime.clustering.k_medoids import TimeSeriesKMedoids
-from sklearn.base import BaseEstimator, ClassifierMixin
-from sklearn.metrics import accuracy_score
-import numpy as np
-
-# ==========================================
-# K-MEDOIDS CLASSIFIER WRAPPER
-# ==========================================
+# =========================================================
+# 2. TIME SERIES KMEDOIDS WRAPPER (FIXED)
+# =========================================================
 class AlignedTimeSeriesKMedoids(ClassifierMixin, BaseEstimator):
-    _estimator_type = "classifier"  # ensures scikit-learn treats it as a classifier
+    _estimator_type = "classifier"
 
-    def __init__(self, n_clusters=2, init_algorithm='random', metric='euclidean',
-                 distance_params=None, random_state=42):
+    def __init__(self, n_clusters=2, init_algorithm='random',
+                 metric='euclidean', distance_params=None,
+                 random_state=42):
+
         self.n_clusters = n_clusters
         self.init_algorithm = init_algorithm
         self.metric = metric
@@ -80,6 +102,7 @@ class AlignedTimeSeriesKMedoids(ClassifierMixin, BaseEstimator):
         self.random_state = random_state
 
     def fit(self, X, y):
+
         self.clusterer_ = TimeSeriesKMedoids(
             n_clusters=self.n_clusters,
             init_algorithm=self.init_algorithm,
@@ -87,63 +110,66 @@ class AlignedTimeSeriesKMedoids(ClassifierMixin, BaseEstimator):
             distance_params=self.distance_params,
             random_state=self.random_state
         )
+
         self.clusterer_.fit(X)
 
-        # Align cluster labels with true labels
         preds = self.clusterer_.predict(X)
-        self.flip_labels_ = accuracy_score(y, preds) < 0.5
+
+        # ✅ PROPER ALIGNMENT
+        self.label_mapping_ = compute_cluster_mapping(y, preds)
         self.classes_ = np.unique(y)
+
         return self
 
     def predict(self, X):
         preds = self.clusterer_.predict(X)
-        if self.flip_labels_:
-            preds = 1 - preds
-        return preds
+        return apply_mapping(preds, self.label_mapping_)
 
     def predict_proba(self, X):
         preds = self.predict(X)
+
         probs = np.zeros((len(preds), len(self.classes_)))
-        probs[np.arange(len(preds)), preds] = 1.0
+        for i, p in enumerate(preds):
+            probs[i, np.where(self.classes_ == p)[0][0]] = 1.0
+
         return probs
 
 
-
-from sktime.classification.distance_based import ShapeDTW
-
-# ==========================================
-# 4. SHAPE-DTW CLASSIFIER WRAPPER
-# ==========================================
-# ==========================================
-# 4. SHAPE-DTW CLASSIFIER WRAPPER (FIXED)
-# ==========================================
+# =========================================================
+# 3. SHAPE-DTW WRAPPER (OK, MINOR CLEANUP)
+# =========================================================
 class ShapeDTWClassifier(ClassifierMixin, BaseEstimator):
     _estimator_type = "classifier"
 
-    def __init__(self, n_neighbors=1, shape_descriptor_function='raw'): # Removed subsequence_distance
+    def __init__(self, n_neighbors=1,
+                 shape_descriptor_function='raw'):
+
         self.n_neighbors = n_neighbors
         self.shape_descriptor_function = shape_descriptor_function
 
     def fit(self, X, y):
-        # We pass only the arguments accepted by sktime's ShapeDTW
+
         self.clf_ = ShapeDTW(
             n_neighbors=self.n_neighbors,
             shape_descriptor_function=self.shape_descriptor_function,
         )
+
         self.clf_.fit(X, y)
         self.classes_ = np.unique(y)
+
         return self
 
     def predict(self, X):
         return self.clf_.predict(X)
 
     def predict_proba(self, X):
-        # ShapeDTW might not implement predict_proba natively depending on version
-        # If it fails, use the same logic as your KMeans wrapper
         try:
             return self.clf_.predict_proba(X)
         except AttributeError:
             preds = self.predict(X)
+
             probs = np.zeros((len(preds), len(self.classes_)))
-            probs[np.arange(len(preds)), preds.astype(int)] = 1.0
+            for i, p in enumerate(preds):
+                probs[i, np.where(self.classes_ == p)[0][0]] = 1.0
+
             return probs
