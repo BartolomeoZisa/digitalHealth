@@ -18,26 +18,21 @@ warnings.filterwarnings('ignore', category=PerformanceWarning)
 # ==========================================
 # 1. PAIRED WINDOWING (SKLEARN-COMPATIBLE)
 # ==========================================
+import numpy as np
+import pandas as pd
+from sklearn.base import BaseEstimator, TransformerMixin
+
+
 class PairedSignalWindower(BaseEstimator, TransformerMixin):
     """
     Converts raw multi-hand time-series data into paired sliding windows.
 
-    This transformer:
-    - Aligns left (L) and right (R) hand signals by timestamp
-    - Builds fixed-length overlapping windows
-    - Produces paired feature tensors per window
-    - Returns labels and subject/group IDs for grouped CV
+    Labels:
+        TD  -> 0
+        UCP -> 1
     """
 
     def __init__(self, window_size=240, step_size=120):
-        """
-        Parameters
-        ----------
-        window_size : int
-            Number of time steps per window.
-        step_size : int
-            Step size for sliding window.
-        """
         self.window_size = window_size
         self.step_size = step_size
 
@@ -45,76 +40,73 @@ class PairedSignalWindower(BaseEstimator, TransformerMixin):
         return self
 
     def transform(self, df):
-        """
-        Parameters
-        ----------
-        df : pd.DataFrame
-            Must contain:
-            - id (subject)
-            - session
-            - datetime
-            - hand (L/R)
-            - Accelerometer X/Y/Z (per hand)
-            - label
 
-        Returns
-        -------
-        X_paired : np.ndarray
-            Shape: (n_windows, window_size, 6)
-        y_labels : np.ndarray
-            Window labels
-        groups : np.ndarray
-            Subject IDs for grouped cross-validation
-        """
+        X_paired = []
+        y_labels = []
+        groups = []
 
-        X_paired, y_labels, groups = [], [], []
+        df = df.copy()
 
+        # Ensure correct ordering
         df = df.sort_values(['id', 'session', 'datetime'])
+
+        # OPTIONAL BUT RECOMMENDED:
+        # enforce consistent label type if already present
+        if "label" in df.columns:
+            df["label"] = df["label"].astype(int)
+
+        # Mark active hand
+        df["is_active"] = df["session"] == df["hand_type"]
 
         for (pid, sess), session_df in df.groupby(['id', 'session']):
 
-            left = session_df[session_df['hand'] == 'L']
-            right = session_df[session_df['hand'] == 'R']
+            active_df = session_df[session_df["is_active"]]
+            inactive_df = session_df[~session_df["is_active"]]
 
-            if left.empty or right.empty:
+            if active_df.empty or inactive_df.empty:
                 continue
 
-            # Align both hands on timestamp
             merged = pd.merge(
-                left,
-                right,
-                on='datetime',
-                suffixes=('_L', '_R'),
-                how='inner'
-            ).sort_values('datetime')
+                active_df,
+                inactive_df,
+                on="datetime",
+                suffixes=("_A", "_N"),
+                how="inner"
+            ).sort_values("datetime")
 
             if len(merged) < self.window_size:
                 continue
 
-            # Extract accelerometer signals
-            L_data = merged[
-                ['Accelerometer X_L', 'Accelerometer Y_L', 'Accelerometer Z_L']
+            # Extract signals
+            A_data = merged[
+                ["Accelerometer X_A", "Accelerometer Y_A", "Accelerometer Z_A"]
             ].values
 
-            R_data = merged[
-                ['Accelerometer X_R', 'Accelerometer Y_R', 'Accelerometer Z_R']
+            N_data = merged[
+                ["Accelerometer X_N", "Accelerometer Y_N", "Accelerometer Z_N"]
             ].values
 
-            label = merged['label_L'].iloc[0]
+            # FINAL FIX: enforce binary label from dataset identity
+            if "label" in session_df.columns:
+                label = int(session_df["label"].iloc[0])
+            else:
+                raise ValueError(
+                    "Missing 'label' column. Must define TD=0 and UCP=1 before windowing."
+                )
 
-            # Sliding window creation
+            # Sliding windows
             for i in range(0, len(merged) - self.window_size + 1, self.step_size):
-                win_L = L_data[i:i + self.window_size]
-                win_R = R_data[i:i + self.window_size]
 
-                # Concatenate left and right hand features
-                X_paired.append(np.hstack([win_L, win_R]))
+                win_A = A_data[i:i + self.window_size]
+                win_N = N_data[i:i + self.window_size]
+
+                X_paired.append(np.hstack([win_A, win_N]))  # (T, 6)
+
                 y_labels.append(label)
                 groups.append(pid)
 
-        return np.array(X_paired), np.array(y_labels), np.array(groups)
-
-
+        return np.array(X_paired), np.array(y_labels, dtype=int), np.array(groups)
+    
 # ==========================================
 # 2. INTER-HAND PROCESSOR
 # ==========================================

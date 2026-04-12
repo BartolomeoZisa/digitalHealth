@@ -23,4 +23,5 @@ run_classification_pipeline(
         pipeline_steps=shapedtw_pipeline,
         param_grid=shapedtw_params,
         experiment_name='ShapeDTW_Direct_Classifier',
+        save_dir='results/shapedtw_preprocessed'
     )

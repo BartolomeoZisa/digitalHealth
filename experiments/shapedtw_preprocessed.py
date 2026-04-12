@@ -15,7 +15,7 @@ shapedtw_pipeline = [
     ]
 
 shapedtw_params = [{
-        'inter_hand__mode': ['diff', 'asymmetry_index'],
+        'inter_hand__mode': ['diff'],
         'clf__shape_descriptor_function': ['raw', 'paa'],
     }]
     
@@ -25,4 +25,5 @@ run_classification_pipeline(
         pipeline_steps=shapedtw_pipeline,
         param_grid=shapedtw_params,
         experiment_name='ShapeDTW_Direct_Classifier',
+        save_dir='results/shapedtw_preprocessed'
     )
