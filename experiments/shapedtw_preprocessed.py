@@ -15,7 +15,7 @@ shapedtw_pipeline = [
     ]
 
 shapedtw_params = [{
-        'inter_hand__mode': ['diff'],
+        'inter_hand__mode': ['diff', 'asymmetry_index'],
         'clf__shape_descriptor_function': ['raw', 'paa'],
     }]
     

@@ -27,7 +27,9 @@ def run_classification_pipeline(
     save_dir: str = 'results',
     experiment_name: str = 'sktime_clustering_exp',
     n_jobs = -1
-):
+): 
+         
+    save_dir = os.path.join(save_dir, f"{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}")
     os.makedirs(save_dir, exist_ok=True)
 
     if inner_cv is None: inner_cv = GroupKFold(n_splits=5)
@@ -75,9 +77,7 @@ def run_classification_pipeline(
     pd.DataFrame(cv_results).to_csv(os.path.join(save_dir, f"{experiment_name}_nested_cv.csv"), index=False)
     pd.DataFrame(grid_search.cv_results_).to_csv(os.path.join(save_dir, f"{experiment_name}_grid_search.csv"), index=False)
 
-    #time_stamped_dir
-    save_dir = os.path.join(save_dir, f"{experiment_name}_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}")
-
+    #time_stamped_di
     summary = {
         "experiment_name": experiment_name,
         "window_size": window_size,

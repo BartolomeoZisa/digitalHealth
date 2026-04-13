@@ -15,7 +15,7 @@ kmeans_pipeline = [
 ]
 
 kmeans_params = [{
-    'inter_hand__mode': ['diff'],
+    'inter_hand__mode': ['diff', 'asymmetry_index'],
     'clf__metric': ['euclidean', 'dtw'],
     'clf__init_algorithm': ['kmeans++', 'forgy'],
     'clf__n_clusters': [2]
@@ -25,6 +25,6 @@ run_classification_pipeline(
     td_path=TD_PATH, ucp_path=UCP_PATH,
     pipeline_steps=kmeans_pipeline,
     param_grid=kmeans_params,
-    save_dir='results/k_means_no_preprocess',
-    experiment_name='KMeans_no_preprocess_Accuracy'
+    save_dir='results/k_means_preprocess',
+    experiment_name='KMeans_preprocess_Accuracy'
 )

@@ -151,6 +151,10 @@ class InterHandProcessor(BaseEstimator, TransformerMixin):
                 res = mag_L - mag_R
 
             elif self.mode == 'asymmetry_index':
+                #start from enmo to remove gravity
+                mag_L = np.maximum(0, mag_L - 1)
+                mag_R = np.maximum(0, mag_R - 1)
+
                 res = ((mag_L - mag_R) / (mag_L + mag_R + 1e-9)) * 100
 
             else:
