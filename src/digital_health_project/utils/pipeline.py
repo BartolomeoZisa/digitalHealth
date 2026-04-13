@@ -10,8 +10,8 @@ import warnings
 from pandas.errors import PerformanceWarning
 # This silences the specific fragmentation warning from Pandas
 warnings.filterwarnings('ignore', category=PerformanceWarning)
+from digital_health_project.features.difference_assimmetry import PairedSignalMerger, TimeSeriesWindower, TimeseriesCleaner
 from digital_health_project.utils.encoder import NumpyEncoder
-from digital_health_project.features.difference_assimmetry import PairedSignalWindower, InterHandProcessor
 
 def run_classification_pipeline(
     td_path: str, 
@@ -26,8 +26,12 @@ def run_classification_pipeline(
     step_size: int = 120,
     save_dir: str = 'results',
     experiment_name: str = 'sktime_clustering_exp',
-    n_jobs = -1
-): 
+    n_jobs = -1,
+    column_names = [
+            "Accelerometer X_A", "Accelerometer Y_A", "Accelerometer Z_A",
+            "Accelerometer X_N", "Accelerometer Y_N", "Accelerometer Z_N"
+    ],
+):
          
     save_dir = os.path.join(save_dir, f"{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}")
     os.makedirs(save_dir, exist_ok=True)
@@ -46,8 +50,17 @@ def run_classification_pipeline(
     td['label'], ucp['label'] = 0, 1
     full_df = pd.concat([td, ucp], ignore_index=True)
 
-    windower = PairedSignalWindower(window_size=window_size, step_size=step_size)
-    X_raw, y, groups = windower.transform(full_df)
+    merger = PairedSignalMerger()
+    df_merged = merger.transform(full_df)
+
+    if(window_size == -1):
+        cleaner = TimeseriesCleaner(column_names=column_names)
+        X_raw, y, groups = cleaner.transform(df_merged)
+    else:    
+        windower = TimeSeriesWindower(window_size=window_size, step_size=step_size, column_names=column_names)
+        X_raw, y, groups = windower.transform(df_merged)
+
+
     print(f"[{experiment_name}] Paired Dataset: {len(X_raw)} windows from {len(np.unique(groups))} patients.")
 
     pipeline = Pipeline(pipeline_steps)

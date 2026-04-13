@@ -23,43 +23,25 @@ import pandas as pd
 from sklearn.base import BaseEstimator, TransformerMixin
 
 
-class PairedSignalWindower(BaseEstimator, TransformerMixin):
+class PairedSignalMerger(BaseEstimator, TransformerMixin):
     """
-    Converts raw multi-hand time-series data into paired sliding windows.
-
-    Labels:
-        TD  -> 0
-        UCP -> 1
+    Merges active and inactive hand signals into a single row per timestamp.
+    Input: Long-format DataFrame
+    Output: Merged DataFrame with suffixes _A (active) and _N (non-active)
     """
-
-    def __init__(self, window_size=240, step_size=120):
-        self.window_size = window_size
-        self.step_size = step_size
-
     def fit(self, X, y=None):
         return self
 
     def transform(self, df):
-
-        X_paired = []
-        y_labels = []
-        groups = []
-
         df = df.copy()
-
-        # Ensure correct ordering
         df = df.sort_values(['id', 'session', 'datetime'])
-
-        # OPTIONAL BUT RECOMMENDED:
-        # enforce consistent label type if already present
-        if "label" in df.columns:
-            df["label"] = df["label"].astype(int)
-
-        # Mark active hand
+        
+        # Identify hand roles
         df["is_active"] = df["session"] == df["hand_type"]
 
-        for (pid, sess), session_df in df.groupby(['id', 'session']):
+        merged_list = []
 
+        for (pid, sess), session_df in df.groupby(['id', 'session']):
             active_df = session_df[session_df["is_active"]]
             inactive_df = session_df[~session_df["is_active"]]
 
@@ -73,40 +55,86 @@ class PairedSignalWindower(BaseEstimator, TransformerMixin):
                 suffixes=("_A", "_N"),
                 how="inner"
             ).sort_values("datetime")
+            
+            # Keep necessary ID/Label info for the next step
+            merged_list.append(merged)
 
-            if len(merged) < self.window_size:
+        return pd.concat(merged_list, ignore_index=True)
+
+
+class TimeSeriesWindower(BaseEstimator, TransformerMixin):
+    """
+    Sliding window extractor. 
+    Expects a DataFrame already merged by PairedSignalMerger.
+    """
+    def __init__(self, window_size=240, step_size=120, column_names=None):
+        self.window_size = window_size
+        self.step_size = step_size
+        self.column_names = column_names
+
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, df):
+        X_windows = []
+        y_labels = []
+        groups = []
+
+        # Group by the merged session keys
+        # Note: suffixes from Merger are id_A and session_A
+        for (pid, sess), session_df in df.groupby(['id_A', 'session_A']):
+            if len(session_df) < self.window_size:
                 continue
 
-            # Extract signals
-            A_data = merged[
-                ["Accelerometer X_A", "Accelerometer Y_A", "Accelerometer Z_A"]
-            ].values
+            # Extract 6-channel data (3 active, 3 inactive)
+            if self.column_names is None:
+                self.column_names = [
+                    "Accelerometer X_A", "Accelerometer Y_A", "Accelerometer Z_A",
+                    "Accelerometer X_N", "Accelerometer Y_N", "Accelerometer Z_N"
+                ]
+            signals = session_df[self.column_names].values
+            
+            label = int(session_df["label_A"].iloc[0])
 
-            N_data = merged[
-                ["Accelerometer X_N", "Accelerometer Y_N", "Accelerometer Z_N"]
-            ].values
-
-            # FINAL FIX: enforce binary label from dataset identity
-            if "label" in session_df.columns:
-                label = int(session_df["label"].iloc[0])
-            else:
-                raise ValueError(
-                    "Missing 'label' column. Must define TD=0 and UCP=1 before windowing."
-                )
-
-            # Sliding windows
-            for i in range(0, len(merged) - self.window_size + 1, self.step_size):
-
-                win_A = A_data[i:i + self.window_size]
-                win_N = N_data[i:i + self.window_size]
-
-                X_paired.append(np.hstack([win_A, win_N]))  # (T, 6)
-
+            for i in range(0, len(session_df) - self.window_size + 1, self.step_size):
+                window = signals[i : i + self.window_size]
+                X_windows.append(window)
                 y_labels.append(label)
                 groups.append(pid)
 
-        return np.array(X_paired), np.array(y_labels, dtype=int), np.array(groups)
+        return np.array(X_windows), np.array(y_labels), np.array(groups)
+
     
+class TimeseriesCleaner(BaseEstimator, TransformerMixin):
+    """
+    Selects specific columns and returns a grouped NumPy array.
+    """
+    def __init__(self, column_names=None):
+        # Default columns if none provided
+        self.column_names = column_names or [
+            "Accelerometer X_A", "Accelerometer Y_A", "Accelerometer Z_A",
+            "Accelerometer X_N", "Accelerometer Y_N", "Accelerometer Z_N"
+        ]
+
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, df):
+        # Use a list comprehension for a cleaner, faster loop
+        results = [
+            (sess_df[self.column_names].values, int(sess_df["label_A"].iloc[0]), pid)
+            for (pid, sess), sess_df in df.groupby(['id_A', 'session_A'])
+        ]
+        
+        # Unzip the results into three separate arrays
+        X_windows, y_labels, groups = zip(*results)
+        
+        return np.array(X_windows), np.array(y_labels), np.array(groups)
+        
+
+
+
+
 # ==========================================
 # 2. INTER-HAND PROCESSOR
 # ==========================================
@@ -212,89 +240,3 @@ class AlignedTimeSeriesKMeans(BaseEstimator):
 
     def predict(self, X):
         return self.model.predict(X)
-
-
-# ==========================================
-# 5. PIPELINE RUNNER
-# ==========================================
-def run_classification_pipeline(
-    td_path,
-    ucp_path,
-    pipeline_steps,
-    param_grid,
-    save_dir,
-    experiment_name
-):
-    """
-    Runs grouped cross-validation pipeline on paired time-series data.
-
-    Steps:
-    1. Load datasets (TD + UCP)
-    2. Generate paired sliding windows
-    3. Build sklearn pipeline
-    4. Evaluate using GroupKFold CV
-    5. Save results to disk
-
-    Parameters
-    ----------
-    td_path : str
-        Path to TD dataset CSV
-    ucp_path : str
-        Path to UCP dataset CSV
-    pipeline_steps : list
-        sklearn Pipeline steps (name, transformer/model)
-    param_grid : dict
-        (Currently unused in this function, reserved for future tuning)
-    save_dir : str
-        Directory to store results
-    experiment_name : str
-        Identifier for experiment logging
-    """
-
-    os.makedirs(save_dir, exist_ok=True)
-
-    df_td = pd.read_csv(td_path)
-    df_ucp = pd.read_csv(ucp_path)
-
-    df = pd.concat([df_td, df_ucp], ignore_index=True)
-
-    print(f"[{experiment_name}] Dataset loaded: {df.shape}")
-
-    # STEP 1: WINDOWING (OUTSIDE GRID SEARCH!)
-    windower = PairedSignalWindower()
-    X, y, groups = windower.transform(df)
-
-    print(f"[{experiment_name}] Paired Dataset: {len(X)} windows from {len(np.unique(groups))} patients.")
-
-    if len(X) == 0:
-        raise ValueError("No windows generated. Check hand labels and timestamp alignment.")
-
-    # STEP 2: PIPELINE
-    pipe = Pipeline(pipeline_steps)
-
-    # STEP 3: CROSS VALIDATION
-    cv = GroupKFold(n_splits=5)
-
-    print("Evaluating with Nested CV (5 splits)...")
-
-    results = cross_validate(
-        pipe,
-        X,
-        y,
-        groups=groups,
-        cv=cv,
-        scoring="accuracy",
-        return_train_score=True
-    )
-
-    # STEP 4: SAVE RESULTS
-    output = {
-        "experiment": experiment_name,
-        "accuracy_mean": float(np.mean(results["test_score"])),
-        "accuracy_std": float(np.std(results["test_score"]))
-    }
-
-    with open(os.path.join(save_dir, "results.json"), "w") as f:
-        json.dump(output, f, indent=4)
-
-    print(output)
