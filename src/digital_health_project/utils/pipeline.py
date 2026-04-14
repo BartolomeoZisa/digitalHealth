@@ -40,7 +40,7 @@ def run_classification_pipeline(
     if outer_cv is None: outer_cv = GroupKFold(n_splits=5)
     
     # We can safely keep roc_auc now that the classifier tag is fixed
-    if scoring is None: scoring = ['accuracy', 'f1', 'precision', 'recall', 'roc_auc']
+    if scoring is None: scoring = ['accuracy', 'f1', 'precision', 'recall']
 
     try:
         td, ucp = pd.read_csv(td_path), pd.read_csv(ucp_path)
