@@ -16,12 +16,26 @@ logreg_pipeline = [
 
 logreg_params = [
     {
+        "features__mode": [
+        "active_only",
+        "active_mirror",
+        "bilateral_only",
+        "all_features"
+        ],
+
         'logreg__penalty': ['l2'],
         'logreg__C': [0.01, 0.1, 1, 10, 100],
         'logreg__solver': ['lbfgs'],
         'logreg__class_weight': [None, 'balanced']
     },
-    {
+    {   
+        "features__mode": [
+        "active_only",
+        "active_mirror",
+        "bilateral_only",
+        "all_features"
+        ],
+
         'logreg__penalty': ['l1'],
         'logreg__C': [0.01, 0.1, 1, 10, 100],
         'logreg__solver': ['liblinear'],

@@ -15,12 +15,26 @@ svm_pipeline = [
 ]
 
 svm_params = [
-    {
+    {   
+        "features__mode": [
+        "active_only",
+        "active_mirror",
+        "bilateral_only",
+        "all_features"
+        ],
+
         'svm__kernel': ['linear'],
         'svm__C': [0.01, 0.1, 1, 10, 100],
         'svm__class_weight': [None, 'balanced']
     },
-    {
+    {   
+        "features__mode": [
+        "active_only",
+        "active_mirror",
+        "bilateral_only",
+        "all_features"
+        ],
+
         'svm__kernel': ['rbf'],
         'svm__C': [0.01, 0.1, 1, 10, 100],
         'svm__gamma': ['scale', 'auto', 0.001, 0.01, 0.1, 1],

@@ -19,7 +19,13 @@ xgb_pipeline = [
 ]
 
 xgb_params = [
-    {
+    {   
+        "features__mode": [
+        "active_only",
+        "active_mirror",
+        "bilateral_only",
+        "all_features"
+        ],
         'xgb__n_estimators': [100, 200, 500],
         'xgb__max_depth': [3, 5, 7],
         'xgb__learning_rate': [0.01, 0.1, 0.2],

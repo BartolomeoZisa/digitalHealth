@@ -15,7 +15,14 @@ rf_pipeline = [
 ]
 
 rf_params = [
-    {
+    {   
+        "features__mode": [
+        "active_only",
+        "active_mirror",
+        "bilateral_only",
+        "all_features"
+        ],
+
         'rf__n_estimators': [100, 200, 500],
         'rf__max_depth': [None, 5, 10, 20],
         'rf__min_samples_split': [2, 5, 10],
