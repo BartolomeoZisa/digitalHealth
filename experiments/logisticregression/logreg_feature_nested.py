@@ -11,7 +11,7 @@ UCP_PATH = 'data/ucp/bbt_ucp_raw_anon.csv'
 
 logreg_pipeline = [
     ('feature_extractor', HandFeatureExtractor()),
-    ('logreg', LogisticRegression(max_iter=1000))
+    ('logreg', LogisticRegression(max_iter=10000))
 ]
 
 logreg_params = [
