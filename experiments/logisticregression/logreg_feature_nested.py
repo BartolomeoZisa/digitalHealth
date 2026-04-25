@@ -16,7 +16,7 @@ logreg_pipeline = [
 
 logreg_params = [
     {
-        "features__mode": [
+        "feature_extractor__mode": [
         "active_only",
         "active_mirror",
         "bilateral_only",
@@ -29,7 +29,7 @@ logreg_params = [
         'logreg__class_weight': [None, 'balanced']
     },
     {   
-        "features__mode": [
+        "feature_extractor__mode": [
         "active_only",
         "active_mirror",
         "bilateral_only",

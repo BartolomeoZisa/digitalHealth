@@ -16,7 +16,7 @@ svm_pipeline = [
 
 svm_params = [
     {   
-        "features__mode": [
+        "feature_extractor__mode": [
         "active_only",
         "active_mirror",
         "bilateral_only",
@@ -28,7 +28,7 @@ svm_params = [
         'svm__class_weight': [None, 'balanced']
     },
     {   
-        "features__mode": [
+        "feature_extractor__features__mode": [
         "active_only",
         "active_mirror",
         "bilateral_only",

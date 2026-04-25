@@ -1,55 +1,73 @@
 #!/bin/bash
 
+# Get absolute path to project root (Bart folder)
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-LOG_DIR="logs/feature_models/$TIMESTAMP"
+LOG_DIR="$PROJECT_ROOT/logs/feature_models/$TIMESTAMP"
+
 mkdir -p "$LOG_DIR"
+echo "📂 Logs being written to: $LOG_DIR"
 
-echo "Logs will be stored in: $LOG_DIR"
+# ========================================================
+# Master Process (The Watcher)
+# ========================================================
+{
+    cd "$PROJECT_ROOT"
 
-source venv/bin/activate
-
-declare -a scripts=(
-    "experiments/svm/svm_feature_nested.py"
-    "experiments/logisticregression/logreg_feature_nested.py"
-    "experiments/randomforest/randomforest_feature_nested.py"
-    "experiments/xgboost/xgboost_feature_nested.py"
-)
-
-# ---- notification helper ----
-notify() {
-    title="$1"
-    message="$2"
-
-    if command -v osascript &> /dev/null; then
-        osascript -e "display notification \"$message\" with title \"$title\""
+    # 1. Load and EXPORT environment variables so subshells can see them
+    if [ -f .env ]; then
+        set -a            # Automatically export all variables defined from here
+        source .env
+        set +a
     fi
 
-    if command -v notify-send &> /dev/null; then
-        notify-send "$title" "$message"
-    fi
-}
+    # 2. Source notification functions
+    source notify.sh
 
-# ---- launch jobs ----
-for script in "${scripts[@]}"; do
-    name=$(basename "$script" .py)
-    log_file="$LOG_DIR/${name}.log"
+    # 3. Setup Virtual Env
+    source venv/bin/activate
 
-    echo "Starting $name..."
+    declare -a scripts=(
+        "experiments/svm/svm_feature_nested.py"
+        "experiments/logisticregression/logreg_feature_nested.py"
+        "experiments/randomforest/randomforest_feature_nested.py"
+        "experiments/xgboost/xgboost_feature_nested.py"
+    )
 
-    (
-        python "$script" > "$log_file" 2>&1
+    pids=()
+    names=()
+
+    # Launch all models
+    for script in "${scripts[@]}"; do
+        name=$(basename "$script" .py)
+        log_file="$LOG_DIR/${name}.log"
+
+        echo "🚀 Starting $name..."
+        python "$script" > "$log_file" 2>&1 &
+        
+        pids+=("$!")
+        names+=("$name")
+    done
+
+    # Wait for each model and update arrays
+    for i in "${!pids[@]}"; do
+        wait "${pids[$i]}"
         exit_code=$?
 
         if [ $exit_code -eq 0 ]; then
-            echo "$name SUCCESS" >> "$LOG_DIR/status.log"
-            notify "✅ $name done" "Training completed successfully"
+            notify_success "${names[$i]}"
         else
-            echo "$name FAILED (exit $exit_code)" >> "$LOG_DIR/status.log"
-            notify "❌ $name failed" "Exit code: $exit_code (check logs)"
+            notify_failure "${names[$i]}" "$exit_code"
         fi
-    ) &
+    done
 
-    echo "  -> launched $name in background"
-done
+    # Final Summary (MUST stay inside these braces)
+    print_summary
 
-echo "All jobs launched. Terminal is free."
+} > "$LOG_DIR/execution.log" 2>&1 & 
+
+MASTER_PID=$!
+disown $MASTER_PID
+
+echo "✅ Master Watcher (PID: $MASTER_PID) is independent."
+echo "🌐 You can safely logout. Summary will be sent to Discord."

@@ -16,7 +16,7 @@ rf_pipeline = [
 
 rf_params = [
     {   
-        "features__mode": [
+        "feature_extractor__mode": [
         "active_only",
         "active_mirror",
         "bilateral_only",

@@ -12,7 +12,6 @@ UCP_PATH = 'data/ucp/bbt_ucp_raw_anon.csv'
 xgb_pipeline = [
     ('feature_extractor', HandFeatureExtractor()),
     ('xgb', XGBClassifier(
-        use_label_encoder=False,
         eval_metric='logloss',
         random_state=42
     ))
@@ -20,7 +19,7 @@ xgb_pipeline = [
 
 xgb_params = [
     {   
-        "features__mode": [
+        "feature_extractor__mode": [
         "active_only",
         "active_mirror",
         "bilateral_only",
