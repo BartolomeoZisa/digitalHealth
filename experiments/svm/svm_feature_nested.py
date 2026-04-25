@@ -1,0 +1,38 @@
+from sklearn.pipeline import Pipeline
+from sklearn.svm import SVC
+from digital_health_project.models.models import AlignedTimeSeriesKMeans
+from digital_health_project.utils.pipeline import run_classification_pipeline
+from digital_health_project.features.features import HandFeatureExtractor
+
+
+TD_PATH = 'data/td/bbt_td_raw_anon.csv'
+UCP_PATH = 'data/ucp/bbt_ucp_raw_anon.csv'
+
+
+svm_pipeline = [
+    ('feature_extractor', HandFeatureExtractor()),
+    ('svm', SVC())
+]
+
+svm_params = [
+    {
+        'svm__kernel': ['linear'],
+        'svm__C': [0.01, 0.1, 1, 10, 100],
+        'svm__class_weight': [None, 'balanced']
+    },
+    {
+        'svm__kernel': ['rbf'],
+        'svm__C': [0.01, 0.1, 1, 10, 100],
+        'svm__gamma': ['scale', 'auto', 0.001, 0.01, 0.1, 1],
+        'svm__class_weight': [None, 'balanced']
+    }
+]
+
+run_classification_pipeline(
+    td_path=TD_PATH, ucp_path=UCP_PATH,
+    pipeline_steps=svm_pipeline,
+    param_grid=svm_params,
+    window_size=-1,
+    save_dir='results/svm_feature_nested',
+    experiment_name='SVM_feature_nested_Accuracy'
+)
