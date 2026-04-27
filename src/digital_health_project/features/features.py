@@ -8,46 +8,20 @@ from sklearn.base import BaseEstimator, TransformerMixin
 import numpy as np
 from sklearn.base import BaseEstimator, TransformerMixin
 
+import numpy as np
+from sklearn.base import BaseEstimator, TransformerMixin
+
+
 class HandFeatureExtractor(BaseEstimator, TransformerMixin):
     """
-    Feature extractor for bilateral accelerometer signals (active vs mirror hand).
+    Robust feature extractor for bilateral accelerometer signals.
 
-    The transformer computes:
-    
-    1. Univariate features per signal (active & mirror):
-       - mean
-       - std
-       - median
-       - max
-       - 90th percentile (q90)
-       - sum
-       - fraction of values > 0
-
-    2. Bilateral features:
-       - mean difference
-       - mean absolute difference
-       - sum ratio
-       - asymmetry index
-       - zero-lag correlation
-       - max cross-correlation and lag (within ±max_lag)
-
-    3. Multiple feature selection modes:
-       - active_only: only active-side features
-       - active_mirror: active + mirror features (no bilateral)
-       - bilateral_only: only interaction features
-       - all_features: everything
-
-    Parameters
-    ----------
-    mode : str, default="all_features"
-        Feature subset to use:
-        - "active_only"
-        - "active_mirror"
-        - "bilateral_only"
-        - "all_features"
-
-    max_lag : int, default=3
-        Maximum lag (in samples) for cross-correlation search.
+    Safe against:
+    - NaNs
+    - constant signals
+    - short windows
+    - divide-by-zero
+    - correlation warnings
     """
 
     def __init__(self, mode="all_features", max_lag=3):
@@ -57,36 +31,69 @@ class HandFeatureExtractor(BaseEstimator, TransformerMixin):
     def fit(self, X, y=None):
         return self
 
+    # ---------- SAFE HELPERS ----------
+    def safe_corr(self, x, y):
+        x = np.asarray(x)
+        y = np.asarray(y)
+
+        if len(x) < 2 or len(y) < 2:
+            return 0.0
+
+        sx = np.std(x)
+        sy = np.std(y)
+
+        if sx < 1e-12 or sy < 1e-12:
+            return 0.0
+
+        return float(np.corrcoef(x, y)[0, 1])
+
+    def safe_div(self, num, denom, eps=1e-8):
+        if abs(denom) < eps:
+            return 0.0
+        return num / denom
+
     # ---------- UNIVARIATE FEATURES ----------
     def summarize_signal(self, signal):
         signal = np.asarray(signal)
 
+        if signal.size == 0:
+            return {
+                "mean": 0.0, "std": 0.0, "median": 0.0,
+                "max": 0.0, "q90": 0.0, "sum": 0.0,
+                "nonzero_frac": 0.0
+            }
+
         return {
-            "mean": np.mean(signal),
-            "std": np.std(signal),
-            "median": np.median(signal),
-            "max": np.max(signal),
-            "q90": np.percentile(signal, 90),
-            "sum": np.sum(signal),
-            "nonzero_frac": np.mean(signal > 0)
+            "mean": float(np.mean(signal)),
+            "std": float(np.std(signal)),
+            "median": float(np.median(signal)),
+            "max": float(np.max(signal)),
+            "q90": float(np.percentile(signal, 90)),
+            "sum": float(np.sum(signal)),
+            "nonzero_frac": float(np.mean(signal != 0))  # fixed
         }
 
     # ---------- CROSS-CORRELATION ----------
     def max_abs_xcorr(self, x, y):
-        best_corr = 0
+        best_corr = 0.0
         best_lag = 0
 
         for lag in range(-self.max_lag, self.max_lag + 1):
 
             if lag < 0:
-                corr = np.corrcoef(x[:lag], y[-lag:])[0, 1]
+                x_slice = x[:lag]
+                y_slice = y[-lag:]
             elif lag > 0:
-                corr = np.corrcoef(x[lag:], y[:-lag])[0, 1]
+                x_slice = x[lag:]
+                y_slice = y[:-lag]
             else:
-                corr = np.corrcoef(x, y)[0, 1]
+                x_slice = x
+                y_slice = y
 
-            if np.isnan(corr):
-                corr = 0
+            if len(x_slice) < 2:
+                corr = 0.0
+            else:
+                corr = self.safe_corr(x_slice, y_slice)
 
             if abs(corr) > abs(best_corr):
                 best_corr = corr
@@ -99,12 +106,27 @@ class HandFeatureExtractor(BaseEstimator, TransformerMixin):
         all_features = []
 
         for window in X:
+            window = np.asarray(window)
+
+            # --- input validation ---
+            if window.ndim != 2 or window.shape[1] != 6:
+                raise ValueError("Each window must have shape (n_samples, 6)")
+
             hand_A = window[:, :3]
             hand_N = window[:, 3:]
 
+            # --- vector magnitude ---
             vm_A = np.linalg.norm(hand_A, axis=1)
             vm_N = np.linalg.norm(hand_N, axis=1)
 
+            # remove gravity (assumes unit=g)
+            vm_A = np.maximum(vm_A - 1, 0)
+            vm_N = np.maximum(vm_N - 1, 0)
+
+            vm_A = np.nan_to_num(vm_A)
+            vm_N = np.nan_to_num(vm_N)
+
+            # --- total (note: signed sum) ---
             total_A = np.sum(hand_A, axis=1)
             total_N = np.sum(hand_N, axis=1)
 
@@ -121,6 +143,9 @@ class HandFeatureExtractor(BaseEstimator, TransformerMixin):
 
             # ---------- UNIVARIATE ----------
             for name, (a, m) in signals.items():
+                a = np.nan_to_num(a)
+                m = np.nan_to_num(m)
+
                 for k, v in self.summarize_signal(a).items():
                     feat[f"{name}_active_{k}"] = v
                 for k, v in self.summarize_signal(m).items():
@@ -128,20 +153,25 @@ class HandFeatureExtractor(BaseEstimator, TransformerMixin):
 
             # ---------- BILATERAL ----------
             for name, (a, m) in signals.items():
+                a = np.nan_to_num(a)
+                m = np.nan_to_num(m)
+
                 diff = a - m
 
-                feat[f"{name}_bilateral_mean_diff"] = np.mean(diff)
-                feat[f"{name}_bilateral_abs_mean_diff"] = np.mean(np.abs(diff))
+                sum_a = float(np.sum(a))
+                sum_m = float(np.sum(m))
 
-                feat[f"{name}_bilateral_sum_ratio"] = np.sum(m) / (np.sum(a) + eps)
+                feat[f"{name}_bilateral_mean_diff"] = float(np.mean(diff))
+                feat[f"{name}_bilateral_abs_mean_diff"] = float(np.mean(np.abs(diff)))
 
-                feat[f"{name}_bilateral_asymmetry"] = (
-                    (np.sum(a) - np.sum(m)) /
-                    (np.sum(a) + np.sum(m) + eps)
+                feat[f"{name}_bilateral_sum_ratio"] = self.safe_div(sum_m, sum_a)
+
+                feat[f"{name}_bilateral_asymmetry"] = self.safe_div(
+                    (sum_a - sum_m),
+                    (sum_a + sum_m)
                 )
 
-                corr = np.corrcoef(a, m)[0, 1]
-                feat[f"{name}_bilateral_corr0"] = 0 if np.isnan(corr) else corr
+                feat[f"{name}_bilateral_corr0"] = self.safe_corr(a, m)
 
                 max_corr, lag = self.max_abs_xcorr(a, m)
                 feat[f"{name}_bilateral_maxcorr_abs"] = abs(max_corr)
@@ -164,6 +194,14 @@ class HandFeatureExtractor(BaseEstimator, TransformerMixin):
             else:
                 raise ValueError(f"Unknown mode: {self.mode}")
 
+            # store feature names once
+            if not hasattr(self, "feature_names_"):
+                self.feature_names_ = list(feat.keys())
+
             all_features.append(list(feat.values()))
 
-        return np.array(all_features)
+        # ---------- FINAL SAFETY ----------
+        features = np.array(all_features, dtype=float)
+        features = np.nan_to_num(features, nan=0.0, posinf=0.0, neginf=0.0)
+
+        return features

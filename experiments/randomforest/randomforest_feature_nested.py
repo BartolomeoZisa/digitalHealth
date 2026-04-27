@@ -37,7 +37,6 @@ run_classification_pipeline(
     ucp_path=UCP_PATH,
     pipeline_steps=rf_pipeline,
     param_grid=rf_params,
-    window_size=-1,
     save_dir='results/rf_feature_nested',
     experiment_name='RF_feature_nested_Accuracy'
 )

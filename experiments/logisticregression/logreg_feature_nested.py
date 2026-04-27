@@ -48,7 +48,6 @@ run_classification_pipeline(
     ucp_path=UCP_PATH,
     pipeline_steps=logreg_pipeline,
     param_grid=logreg_params,
-    window_size=-1,
     save_dir='results/logreg_feature_nested',
     experiment_name='LogReg_feature_nested_Accuracy'
 )

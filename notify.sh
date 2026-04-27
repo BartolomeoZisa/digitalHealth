@@ -12,8 +12,9 @@ send_discord() {
         return
     fi
 
-    # Prepare JSON and capture HTTP response code
-    json_data=$(printf '{"content": "%b"}' "$message")
+    # Use jq to safely encode the message into JSON
+    # This handles newlines, quotes, and backslashes automatically
+    json_data=$(jq -n --arg msg "$message" '{"content": $msg}')
     
     status_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
         -H "Content-Type: application/json" \
@@ -23,7 +24,7 @@ send_discord() {
     if [[ "$status_code" =~ ^2 ]]; then
         echo "✅ Discord notification sent (HTTP $status_code)."
     else
-        echo "❌ Discord notification failed (HTTP $status_code)."
+        echo "❌ Discord notification failed (HTTP $status_code). Payload: $json_data"
     fi
 }
 

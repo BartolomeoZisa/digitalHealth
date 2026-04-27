@@ -28,7 +28,7 @@ svm_params = [
         'svm__class_weight': [None, 'balanced']
     },
     {   
-        "feature_extractor__features__mode": [
+        "feature_extractor__mode": [
         "active_only",
         "active_mirror",
         "bilateral_only",
@@ -46,7 +46,6 @@ run_classification_pipeline(
     td_path=TD_PATH, ucp_path=UCP_PATH,
     pipeline_steps=svm_pipeline,
     param_grid=svm_params,
-    window_size=-1,
     save_dir='results/svm_feature_nested',
     experiment_name='SVM_feature_nested_Accuracy'
 )

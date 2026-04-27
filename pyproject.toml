@@ -8,5 +8,6 @@ dependencies = [
     "pandas",
     "scikit-learn",
     "sktime",
+    "xgboost",
     "numba"
 ]
