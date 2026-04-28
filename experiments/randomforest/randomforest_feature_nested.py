@@ -28,7 +28,6 @@ rf_params = [
         'rf__min_samples_split': [2, 5, 10],
         'rf__min_samples_leaf': [1, 2, 4],
         'rf__max_features': ['sqrt', 'log2'],
-        'rf__class_weight': [None, 'balanced']
     }
 ]
 

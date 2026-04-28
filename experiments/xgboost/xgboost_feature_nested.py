@@ -12,7 +12,7 @@ UCP_PATH = 'data/ucp/bbt_ucp_raw_anon.csv'
 xgb_pipeline = [
     ('feature_extractor', HandFeatureExtractor()),
     ('xgb', XGBClassifier(
-        eval_metric='logloss',
+        eval_metric='binary:logistic',
         random_state=42
     ))
 ]
@@ -26,12 +26,13 @@ xgb_params = [
         "all_features"
         ],
         'xgb__n_estimators': [100, 200, 500],
-        'xgb__max_depth': [3, 5, 7],
+        'xgb__max_depth': [5, 7, 10],
         'xgb__learning_rate': [0.01, 0.1, 0.2],
-        'xgb__subsample': [0.8, 1.0],
-        'xgb__gamma': [0, 0.1, 0.5],
-        'xgb__reg_alpha': [0, 0.1, 1],
-        'xgb__reg_lambda': [1, 5, 10],
+        'xgb__subsample': [0.8],
+        'xgb__colsample_bytree': [0.8],
+        #'xgb__gamma': [0],
+        #'xgb__reg_alpha': [0, 0.1, 1],
+        #'xgb__reg_lambda': [1, 5, 10],
     }
 ]
 
