@@ -2,7 +2,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.ensemble import RandomForestClassifier
 from digital_health_project.models.models import AlignedTimeSeriesKMeans
 from digital_health_project.utils.pipeline import run_classification_pipeline
-from digital_health_project.features.features import HandFeatureExtractor
+from digital_health_project.features.features import DualHandFeatureExtractor
 
 
 TD_PATH = 'data/td/bbt_td_raw_anon.csv'
@@ -10,17 +10,15 @@ UCP_PATH = 'data/ucp/bbt_ucp_raw_anon.csv'
 
 
 rf_pipeline = [
-    ('feature_extractor', HandFeatureExtractor()),
+    ('feature_extractor', DualHandFeatureExtractor()),
     ('rf', RandomForestClassifier())
 ]
 
 rf_params = [
     {   
         "feature_extractor__mode": [
-        "active_only",
-        "active_mirror",
-        "bilateral_only",
-        "all_features"
+            "preprocessed",
+            "base"
         ],
 
         'rf__n_estimators': [200, 500, 1000],

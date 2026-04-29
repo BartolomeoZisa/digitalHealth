@@ -3,7 +3,7 @@
 # Get absolute path to project root (Bart folder)
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-LOG_DIR="$PROJECT_ROOT/logs/feature_models/$TIMESTAMP"
+LOG_DIR="$PROJECT_ROOT/logs/lessfeature_models/$TIMESTAMP"
 
 mkdir -p "$LOG_DIR"
 echo "📂 Logs being written to: $LOG_DIR"
@@ -28,10 +28,10 @@ echo "📂 Logs being written to: $LOG_DIR"
     source venv/bin/activate
 
     declare -a scripts=(
-        "experiments/svm/svm_feature_nested.py"
-        "experiments/logisticregression/logreg_feature_nested.py"
-        "experiments/randomforest/randomforest_feature_nested.py"
-        "experiments/xgboost/xgboost_feature_nested.py"
+        "experiments/svm/svm_lessfeature_nested.py"
+        "experiments/logisticregression/logreg_lessfeature_nested.py"
+        "experiments/randomforest/randomforest_lessfeature_nested.py"
+        "experiments/xgboost/xgboost_lessfeature_nested.py"
     )
 
     pids=()

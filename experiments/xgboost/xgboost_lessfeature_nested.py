@@ -2,7 +2,7 @@ from sklearn.pipeline import Pipeline
 from xgboost import XGBClassifier
 from digital_health_project.models.models import AlignedTimeSeriesKMeans
 from digital_health_project.utils.pipeline import run_classification_pipeline
-from digital_health_project.features.features import HandFeatureExtractor
+from digital_health_project.features.features import DualHandFeatureExtractor
 
 
 TD_PATH = 'data/td/bbt_td_raw_anon.csv'
@@ -10,7 +10,7 @@ UCP_PATH = 'data/ucp/bbt_ucp_raw_anon.csv'
 
 
 xgb_pipeline = [
-    ('feature_extractor', HandFeatureExtractor()),
+    ('feature_extractor', DualHandFeatureExtractor()),
     ('xgb', XGBClassifier(
         eval_metric='logloss',
         random_state=42
@@ -20,10 +20,8 @@ xgb_pipeline = [
 xgb_params = [
     {   
         "feature_extractor__mode": [
-        "active_only",
-        "active_mirror",
-        "bilateral_only",
-        "all_features"
+            "preprocessed",
+            "base"
         ],
         'xgb__n_estimators': [100, 200, 500, 1000],
         'xgb__max_depth': [5, 7, 10],

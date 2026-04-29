@@ -3,7 +3,7 @@
 # Get absolute path to project root (Bart folder)
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-LOG_DIR="$PROJECT_ROOT/logs/feature_models/$TIMESTAMP"
+LOG_DIR="$PROJECT_ROOT/logs/raw_models/$TIMESTAMP"
 
 mkdir -p "$LOG_DIR"
 echo "📂 Logs being written to: $LOG_DIR"
@@ -16,7 +16,7 @@ echo "📂 Logs being written to: $LOG_DIR"
 
     # 1. Load and EXPORT environment variables so subshells can see them
     if [ -f .env ]; then
-        set -a            # Automatically export all variables defined from here
+        set -a
         source .env
         set +a
     fi
@@ -28,10 +28,10 @@ echo "📂 Logs being written to: $LOG_DIR"
     source venv/bin/activate
 
     declare -a scripts=(
-        "experiments/svm/svm_feature_nested.py"
-        "experiments/logisticregression/logreg_feature_nested.py"
-        "experiments/randomforest/randomforest_feature_nested.py"
-        "experiments/xgboost/xgboost_feature_nested.py"
+        "experiments/svm/svm_raw_nested.py"
+        "experiments/logisticregression/logreg_raw_nested.py"
+        "experiments/randomforest/randomforest_raw_nested.py"
+        "experiments/xgboost/xgboost_raw_nested.py"
     )
 
     pids=()
@@ -61,7 +61,7 @@ echo "📂 Logs being written to: $LOG_DIR"
         fi
     done
 
-    # Final Summary (MUST stay inside these braces)
+    # Final Summary
     print_summary
 
 } > "$LOG_DIR/execution.log" 2>&1 & 

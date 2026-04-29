@@ -195,3 +195,103 @@ class HandFeatureExtractor(BaseEstimator, TransformerMixin):
         features = np.nan_to_num(features, nan=0.0, posinf=0.0, neginf=0.0)
 
         return features
+
+
+        import numpy as np
+from sklearn.base import BaseEstimator, TransformerMixin
+
+class DualHandFeatureExtractor(BaseEstimator, TransformerMixin):
+    """
+    Unified extractor supporting both Raw (36 feats) and Preprocessed (11 feats) pipelines.
+    """
+
+    def __init__(self, mode="preprocessed", max_lag=3):
+        self.mode = mode
+        self.max_lag = max_lag
+        self.feature_names_ = None
+
+    def fit(self, X, y=None):
+        return self
+
+    # ---------- UTILS ----------
+    def safe_corr(self, x, y):
+        if len(x) < 2 or np.std(x) < 1e-12 or np.std(y) < 1e-12:
+            return 0.0
+        return float(np.corrcoef(x, y)[0, 1])
+
+    def get_asymmetry(self, a, b):
+        sum_a, sum_b = np.sum(a), np.sum(b)
+        denom = sum_a + sum_b
+        return (sum_a - sum_b) / denom if abs(denom) > 1e-8 else 0.0
+
+    def get_xcorr_stats(self, x, y):
+        best_corr = 0.0
+        for lag in range(-self.max_lag, self.max_lag + 1):
+            if lag < 0: xs, ys = x[:lag], y[-lag:]
+            elif lag > 0: xs, ys = x[lag:], y[:-lag]
+            else: xs, ys = x, y
+            
+            if len(xs) >= 2:
+                corr = self.safe_corr(xs, ys)
+                if abs(corr) > abs(best_corr):
+                    best_corr = corr
+        return abs(best_corr)
+
+    # ---------- TRANSFORM ----------
+    def transform(self, X):
+        all_features = []
+
+        for window in X:
+            window = np.nan_to_num(np.asarray(window))
+            feat = {}
+
+            if self.mode == "preprocessed":
+                # --- PREPROCESSED PIPELINE (11 Features) ---
+                enmo_L = np.maximum(np.linalg.norm(window[:, :3], axis=1) - 1.0, 0)
+                enmo_R = np.maximum(np.linalg.norm(window[:, 3:], axis=1) - 1.0, 0)
+                
+                # Stats (6)
+                for name, sig in [("L", enmo_L), ("R", enmo_R)]:
+                    feat[f"enmo_{name}_mean"] = np.mean(sig)
+                    feat[f"enmo_{name}_std"] = np.std(sig)
+                    feat[f"enmo_{name}_rms"] = np.sqrt(np.mean(sig**2))
+                
+                # Relations (3)
+                feat["bilateral_corr"] = self.safe_corr(enmo_L, enmo_R)
+                feat["bilateral_xcorr"] = self.get_xcorr_stats(enmo_L, enmo_R)
+                feat["bilateral_asym"] = self.get_asymmetry(enmo_L, enmo_R)
+                
+                # Aggregation (2)
+                combined = (enmo_L + enmo_R) / 2
+                feat["agg_mean"] = np.mean(combined)
+                feat["agg_std"] = np.std(combined)
+
+            else:
+                # --- RAW PIPELINE (36 Features) ---
+                # Axes: Ax, Ay, Az, VM for both hands (4 signals * 2 hands = 8)
+                vm_L = np.linalg.norm(window[:, :3], axis=1)
+                vm_R = np.linalg.norm(window[:, 3:], axis=1)
+                
+                signals_L = [window[:, 0], window[:, 1], window[:, 2], vm_L]
+                signals_R = [window[:, 3], window[:, 4], window[:, 5], vm_R]
+                sig_names = ["Ax", "Ay", "Az", "VM"]
+
+                # Statistical Moments (24 features: 4 signals * 2 hands * 3 stats)
+                for i, name in enumerate(sig_names):
+                    for side, sig in [("L", signals_L[i]), ("R", signals_R[i])]:
+                        feat[f"{name}_{side}_mean"] = np.mean(sig)
+                        feat[f"{name}_{side}_std"] = np.std(sig)
+                        feat[f"{name}_{side}_rms"] = np.sqrt(np.mean(sig**2))
+
+                # Relational (12 features: 4 signals * 3 relations)
+                for i, name in enumerate(sig_names):
+                    feat[f"{name}_corr"] = self.safe_corr(signals_L[i], signals_R[i])
+                    feat[f"{name}_xcorr"] = self.get_xcorr_stats(signals_L[i], signals_R[i])
+                    feat[f"{name}_asym"] = self.get_asymmetry(signals_L[i], signals_R[i])
+
+            if self.feature_names_ is None:
+                self.feature_names_ = list(feat.keys())
+
+            all_features.append(list(feat.values()))
+
+        return np.nan_to_num(np.array(all_features, dtype=float))
