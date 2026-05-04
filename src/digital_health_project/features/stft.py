@@ -59,5 +59,8 @@ class STFTTransformer(BaseEstimator, TransformerMixin):
             spec = np.stack(channels, axis=0)
 
             transformed.append(spec)
+            
+        shapes = [x.shape for x in transformed]
+        print(set(shapes))
 
         return np.array(transformed)

@@ -102,6 +102,7 @@ def run_classification_pipeline(
         windower = TimeSeriesWindower(window_size=window_size, step_size=step_size, column_names=column_names)
         X_raw, y, groups = windower.transform(df_merged)
 
+    #y = np.array(y).astype(np.int64)
 
     print(f"[{experiment_name}] Paired Dataset: {len(X_raw)} windows from {len(np.unique(groups))} patients.")
 

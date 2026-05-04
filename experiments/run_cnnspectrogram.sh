@@ -7,6 +7,7 @@ LOG_DIR="$PROJECT_ROOT/logs/raw_models/$TIMESTAMP"
 
 mkdir -p "$LOG_DIR"
 echo "📂 Logs being written to: $LOG_DIR"
+echo "tail $LOG_DIR/*.log to monitor progress in real-time."
 
 # ========================================================
 # Master Process (The Watcher)
