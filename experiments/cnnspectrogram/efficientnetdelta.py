@@ -18,7 +18,7 @@ net = NeuralNetClassifier(
     train_split=ValidSplit(0.1), 
     device='cuda' if torch.cuda.is_available() else 'cpu',
     callbacks=[
-        EarlyStopping(monitor='valid_loss', patience=5, restore_best_weights=True)
+        EarlyStopping(monitor='valid_loss', patience=5)
     ],
 )
 

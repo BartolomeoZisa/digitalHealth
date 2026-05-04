@@ -1,16 +1,16 @@
-[project]
-name = "digital-health-project"
-version = "0.1.0"
-requires-python = ">=3.8"
+    [project]
+    name = "digital-health-project"
+    version = "0.1.0"
+    requires-python = ">=3.8"
 
-dependencies = [
-    "numpy",
-    "pandas",
-    "scikit-learn",
-    "sktime",
-    "xgboost",
-    "numba",
-    "skorch",
-    "torch",
-    "torchvision",
-]
+    dependencies = [
+        "numpy",
+        "pandas",
+        "scikit-learn",
+        "sktime",
+        "xgboost",
+        "numba",
+        "skorch>=0.15,<1.0",
+        "torch==2.1.*",
+        "torchvision==0.16.*",
+    ]
