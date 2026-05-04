@@ -7,6 +7,9 @@ from digital_health_project.features.stft import STFTTransformer
 from digital_health_project.models.cnn import MultiBranchCNN
 from digital_health_project.utils.pipeline import run_classification_pipeline
 
+TD_PATH = 'data/td/bbt_td_raw_anon.csv'
+UCP_PATH = 'data/ucp/bbt_ucp_raw_anon.csv'
+
 # 1. Define the skorch wrapper
 # ValidSplit(0.1) ensures early stopping uses 10% of the CURRENT training fold
 net = NeuralNetClassifier(
@@ -36,8 +39,8 @@ param_grid = {
 }
 
 run_classification_pipeline(
-    td_path='path_to_td.csv',
-    ucp_path='path_to_ucp.csv',
+    td_path=TD_PATH,
+    ucp_path=UCP_PATH,
     pipeline_steps=pipeline_steps,
     param_grid=param_grid,
     window_size=-1, # Set to -1 to use full window size (no sliding)
