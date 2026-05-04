@@ -9,5 +9,8 @@ dependencies = [
     "scikit-learn",
     "sktime",
     "xgboost",
-    "numba"
+    "numba",
+    "skorch",
+    "torch",
+    "torchvision",
 ]

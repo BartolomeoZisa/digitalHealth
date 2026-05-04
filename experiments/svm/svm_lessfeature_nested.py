@@ -12,7 +12,7 @@ UCP_PATH = 'data/ucp/bbt_ucp_raw_anon.csv'
     
 svm_pipeline = [
     ('feature_extractor', DualHandFeatureExtractor()),
-    ('scaler', StandardScaler()),
+    #('scaler', StandardScaler()),
     ('svm', SVC())
 ]
 
@@ -25,8 +25,19 @@ svm_params = [
 
         'svm__kernel': ['rbf'],
         'svm__C': [0.01, 0.1, 1, 10, 100],
-        'svm__gamma': [0.001, 0.01, 0.1, 1],
+        'svm__gamma': [0.001, 0.01, 0.1, 1, "scale"],
+    },
+
+    {   
+        "feature_extractor__mode": [
+            "preprocessed",
+            "base"
+        ],
+
+        'svm__kernel': ['linear'],
+        'svm__C': [0.01, 0.1, 1, 10, 100],
     }
+
 ]
 
 run_classification_pipeline(

@@ -32,6 +32,48 @@ def run_classification_pipeline(
             "Accelerometer X_N", "Accelerometer Y_N", "Accelerometer Z_N"
     ],
 ):
+    """
+    Executes a nested cross-validation classification pipeline for time-series data.
+
+    This function loads two classes of data (TD and UCP), merges them, applies 
+    windowing/segmentation, and performs a GridSearch nested within a Cross-Validation 
+    loop to ensure unbiased performance estimation and hyperparameter optimization.
+
+    Args:
+        td_path (str): File path to the 'Typically Developing' (class 0) CSV data.
+        ucp_path (str): File path to the 'Unpaired/Clinical' (class 1) CSV data.
+        pipeline_steps (list): List of (name, transform) tuples for the sklearn Pipeline.
+        param_grid (list/dict): Dictionary or list of dictionaries with parameters 
+            to try during the GridSearch.
+        inner_cv (iter, optional): Cross-validation generator for the hyperparameter 
+            search. Defaults to GroupKFold(n_splits=5).
+        outer_cv (iter, optional): Cross-validation generator for the performance 
+            estimation. Defaults to GroupKFold(n_splits=5).
+        scoring (list, optional): List of sklearn-compatible metric strings. 
+            Defaults to ['accuracy', 'f1', 'precision', 'recall'].
+        refit_metric (str): The metric used to identify the best model in GridSearch.
+            Defaults to 'f1'.
+        window_size (int): Size of the sliding window (in samples). If set to -1, 
+            the pipeline skips windowing and uses the full signal. Defaults to 240.
+        step_size (int): The stride/overlap between windows. Defaults to 120.
+        save_dir (str): Root directory for saving results and logs. Defaults to 'results'.
+        experiment_name (str): Label for the current run, used in file naming. 
+            Defaults to 'sktime_clustering_exp'.
+        n_jobs (int): Number of CPU cores to use. -1 uses all available. Defaults to -1.
+        column_names (list): List of sensor axis names to be processed.
+
+    Returns:
+        None: Results are saved to disk as CSV and JSON files in a timestamped 
+            subdirectory within `save_dir`.
+
+    Notes:
+        - The function enforces 'patient-aware' splitting using `groups` to prevent 
+          data leakage (windows from the same patient will not be split across 
+          train/test sets).
+        - It includes a compatibility wrapper for `cross_validate` to handle 
+          varying scikit-learn version requirements for `fit_params`.
+    """
+
          
     save_dir = os.path.join(save_dir, f"{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}")
     os.makedirs(save_dir, exist_ok=True)

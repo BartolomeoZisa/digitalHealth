@@ -12,7 +12,7 @@ UCP_PATH = 'data/ucp/bbt_ucp_raw_anon.csv'
 
 logreg_pipeline = [
     ('feature_extractor', DualHandFeatureExtractor()),
-    ('scaler', StandardScaler()),   
+    #('scaler', StandardScaler()),   
     ('logreg', LogisticRegression(max_iter=1000))
 ]
 
@@ -29,10 +29,8 @@ logreg_params = [
     },
     {   
         "feature_extractor__mode": [
-        "active_only",
-        "active_mirror",
-        "bilateral_only",
-        "all_features"
+            "base",
+            "preprocessed"
         ],
 
         'logreg__penalty': ['l1'],
