@@ -3,9 +3,10 @@ import torch.nn as nn
 import torchvision.models as models
 
 class MultiBranchCNN(nn.Module):
-    def __init__(self, architecture='C1', num_classes=2):
+    def __init__(self, architecture='C1', num_classes=2, dropout_rate=0.5):
         super(MultiBranchCNN, self).__init__()
         self.architecture = architecture
+        self.dropout = nn.Dropout(p=dropout_rate)
         
         # LOGIC FIX: 
         # C1 and C2 slice the input into 1-channel branches.
@@ -44,6 +45,7 @@ class MultiBranchCNN(nn.Module):
             branch1 = self.base(x[:, 0:1, :, :])
             branch2 = self.base(x[:, 1:2, :, :])
             merged = torch.cat((branch1, branch2), dim=1)
+            merged = self.dropout(merged)
             return self.classifier(merged)
             
         elif self.architecture == 'C3':
@@ -53,5 +55,6 @@ class MultiBranchCNN(nn.Module):
             
             combined = torch.cat((spec, delta), dim=1)
             features = self.base(combined)
+            features = self.dropout(features)
             return self.classifier(features)
             

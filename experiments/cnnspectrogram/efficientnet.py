@@ -16,13 +16,15 @@ UCP_PATH = 'data/ucp/bbt_ucp_raw_anon.csv'
 net = NeuralNetClassifier(
     module=MultiBranchCNN,
     criterion=nn.CrossEntropyLoss,
-    optimizer=torch.optim.Adam,
+    optimizer=torch.optim.AdamW,     # Switched to AdamW
+    optimizer__weight_decay=0.01,    # Added L2 regularization
     max_epochs=1000,
     batch_size=32,
     train_split=ValidSplit(0.1), 
     device='cuda' if torch.cuda.is_available() else 'cpu',
     callbacks=[
-        EarlyStopping(monitor='valid_loss', patience=5)
+        # Lowered patience slightly; 20 is fine, but 10-15 catches overfitting faster
+        EarlyStopping(monitor='valid_loss', patience=20) 
     ],
 )
 
@@ -35,8 +37,10 @@ pipeline_steps = [
 # 3. Define Parameter Grid
 # You can toggle between architectures from  here
 param_grid = {
-    'cnn__module__architecture': ['C3'],
-    'cnn__lr': [0.0001]
+    'cnn__module__architecture': ['C1', 'C3'],
+    'cnn__module__dropout_rate': [0.3, 0.5], # Test different dropout levels
+    'cnn__optimizer__weight_decay': [1e-4, 1e-2], # Test different L2 strengths
+    'cnn__lr': [0.0001, 0.001]
 }
 
 run_classification_pipeline(
