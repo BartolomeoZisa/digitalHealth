@@ -7,6 +7,7 @@ from digital_health_project.features.stft import STFTTransformer
 from digital_health_project.models.cnn import MultiBranchCNN
 from digital_health_project.utils.pipeline import run_classification_pipeline
 from digital_health_project.models.cnn import TimeSeriesCNN
+from sklearn.model_selection import GroupShuffleSplit
 
 TD_PATH = 'data/td/bbt_td_raw_anon.csv'
 UCP_PATH = 'data/ucp/bbt_ucp_raw_anon.csv'
@@ -24,43 +25,46 @@ class FloatBCEWithLogitsLoss(nn.BCEWithLogitsLoss):
 
 # Update your skorch wrapper definition
 # 1. Update the skorch wrapper to use AdamW
+TD_PATH = 'data/td/bbt_td_raw_anon.csv'
+UCP_PATH = 'data/ucp/bbt_ucp_raw_anon.csv'
+
+# Update the skorch wrapper to use GroupShuffleSplit
 net = NeuralNetBinaryClassifier(
     module=TimeSeriesCNN,
     module__input_channels=6,
     module__output_dim=1,
     criterion=FloatBCEWithLogitsLoss,
-    optimizer=torch.optim.AdamW,  # Switched from Adam to AdamW
-    optimizer__weight_decay=0.01, # Recommended to set a default weight decay for AdamW
+    optimizer=torch.optim.AdamW, 
+    optimizer__weight_decay=0.01,
     lr=0.001,
-    max_epochs=50,
+    max_epochs=1000,
     batch_size=32,
-    train_split=ValidSplit(0.1),
-    callbacks=[EarlyStopping(patience=10)],
+    
+    # -------------------------------------------------------------
+    # Use GroupShuffleSplit to avoid window leakage during early stopping!
+    train_split=ValidSplit(cv=GroupShuffleSplit(n_splits=1, test_size=0.1, random_state=42)),
+    # -------------------------------------------------------------
+    
+    callbacks=[EarlyStopping(patience=20)],
     device='cuda' if torch.cuda.is_available() else 'cpu',
 )
 
-# 2. Define Pipeline Steps
 pipeline_steps = [
     ('cnn', net)
 ]
 
-# 3. Define Parameter Grid
-# You can toggle between architectures from  here
-# 3. Updated Parameter Grid
 param_grid = {
     'cnn__module__num_filters': [16, 32],
     'cnn__module__kernel_size': [3, 5],
-    'cnn__lr': [0.01, 0.001],
-    'cnn__optimizer__weight_decay': [1e-4, 1e-2] # Added weight decay tuning
+    'cnn__lr': [0.0001, 0.001],
+    'cnn__optimizer__weight_decay': [1e-2, 1e-4]
 }
-
 
 run_classification_pipeline(
     td_path=TD_PATH,
     ucp_path=UCP_PATH,
     pipeline_steps=pipeline_steps,
     param_grid=param_grid,
-    #window_size=-1, # Set to -1 to use full window size (no sliding)
     experiment_name='1dcnn',
-    n_jobs=1 # Set to 1 when using GPU/Neural Networks to avoid memory errors
+    n_jobs=1 
 )

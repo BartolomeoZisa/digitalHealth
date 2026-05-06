@@ -71,7 +71,7 @@ class MultiBranchCNN(nn.Module):
         
         return new_conv
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         x = x.float() 
         
         if self.architecture in ['C1', 'C2']:
@@ -123,7 +123,7 @@ class TimeSeriesCNN(nn.Module):
         # Using output_dim=1 for Binary Classification (BCEWithLogitsLoss)
         self.fc = nn.Linear(num_filters * 2, output_dim)
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         # Ensure input is float32 for the Conv layers
         x = x.float() 
         
@@ -137,6 +137,86 @@ class TimeSeriesCNN(nn.Module):
         x = self.dropout(x)
         
         # Return logits (BCEWithLogitsLoss handles the sigmoid internally)
+        return self.fc(x).squeeze(-1)
+
+
+class InceptionBlock(nn.Module):
+    """Inception block with multi-scale 1D convolutions (Fawaz et al., 2020)."""
+    def __init__(self, in_channels, out_channels, kernel_sizes=[9, 19, 39]):
+        super(InceptionBlock, self).__init__()
+        self.branches = nn.ModuleList()
+        for k in kernel_sizes:
+            pad = k // 2
+            self.branches.append(nn.Sequential(
+                nn.Conv1d(in_channels, out_channels, kernel_size=k, padding=pad, bias=False),
+                nn.BatchNorm1d(out_channels),
+                nn.ReLU(inplace=True)
+            ))
+
+    def forward(self, x):
+        return torch.cat([branch(x) for branch in self.branches], dim=1)
+
+
+class InceptionTime(nn.Module):
+    """
+    InceptionTime for multivariate time series classification.
+    Reference: Fawaz et al., "InceptionTime: Finding AlexNet for Time Series Classification", 2020.
+    
+    Input shape: (batch, time_steps, num_channels)  — skorch will pass (batch, channels, time) 
+                  so we transpose in forward().
+    """
+    def __init__(
+        self,
+        input_channels=6,
+        num_blocks=6,
+        num_channels=32,
+        kernel_sizes=[9, 19, 39],
+        dropout=0.1,
+        output_dim=1,
+    ):
+        super(InceptionTime, self).__init__()
+        
+        self.input_channels = input_channels
+        self.num_blocks = num_blocks
+        self.num_channels = num_channels
+        self.kernel_sizes = kernel_sizes
+        
+        # Initial conv layer
+        self.initial_conv = nn.Sequential(
+            nn.Conv1d(input_channels, num_channels, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm1d(num_channels),
+            nn.ReLU(inplace=True)
+        )
+        
+        # Stacked Inception blocks with residual connections
+        self.blocks = nn.ModuleList()
+        for _ in range(num_blocks):
+            block_channels = num_channels * len(kernel_sizes)
+            self.blocks.append(nn.Sequential(
+                InceptionBlock(num_channels if _ == 0 else block_channels, num_channels, kernel_sizes),
+                nn.Conv1d(block_channels, block_channels, kernel_size=1, padding=0, bias=False),
+                nn.BatchNorm1d(block_channels),
+                nn.ReLU(inplace=True)
+            ))
+        
+        # Global average pooling + classifier
+        final_channels = block_channels
+        self.global_pool = nn.AdaptiveAvgPool1d(1)
+        self.dropout = nn.Dropout(dropout)
+        self.fc = nn.Linear(final_channels, output_dim)
+        
+    def forward(self, x, **kwargs):
+        x = x.float()
+        # skorch passes (batch, time, channels) for 1D data -> transpose to (batch, channels, time)
+        if x.dim() == 3 and x.shape[1] != self.input_channels:
+            x = x.transpose(1, 2)
+        
+        x = self.initial_conv(x)
+        for block in self.blocks:
+            x = block(x)
+        
+        x = self.global_pool(x).squeeze(-1)
+        x = self.dropout(x)
         return self.fc(x).squeeze(-1)
 
 

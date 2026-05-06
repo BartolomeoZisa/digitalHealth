@@ -107,6 +107,13 @@ def run_classification_pipeline(
     print(f"[{experiment_name}] Paired Dataset: {len(X_raw)} windows from {len(np.unique(groups))} patients.")
 
     pipeline = Pipeline(pipeline_steps)
+
+    step_fit_params = {}
+    for step_name, step_obj in pipeline_steps:
+        if hasattr(step_obj, 'train_split'):
+            step_fit_params[f"{step_name}__groups"] = groups
+
+
     grid_search = GridSearchCV(
         pipeline, param_grid, cv=inner_cv, 
         scoring=scoring, refit=refit_metric, n_jobs=n_jobs,
@@ -115,17 +122,19 @@ def run_classification_pipeline(
 
     print(f"Evaluating with Nested CV ({outer_cv.n_splits} splits)...")
     
+    cv_fit_params = {'groups': groups, **step_fit_params}
+
     try:
         cv_results = cross_validate(
             grid_search, X_raw, y, groups=groups, cv=outer_cv, 
             scoring=scoring, return_train_score=False,
-            params={'groups': groups} 
+            params=cv_fit_params
         )
     except TypeError:
         cv_results = cross_validate(
             grid_search, X_raw, y, groups=groups, cv=outer_cv, 
             scoring=scoring, return_train_score=False,
-            fit_params={'groups': groups}
+            fit_params=cv_fit_params
         )
 
     grid_search.fit(X_raw, y, groups=groups)
