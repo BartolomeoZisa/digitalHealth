@@ -23,26 +23,18 @@ class FloatBCEWithLogitsLoss(nn.BCEWithLogitsLoss):
         return super().forward(input, target.float())
 
 # Update your skorch wrapper definition
-from skorch.dataset import GroupedValidSplit
-from torch.optim import AdamW
-
-# 1. Define the skorch wrapper
-# Using GroupedValidSplit requires passing 'groups' to the .fit() method later.
-# In skorch, this is handled by specifying the split and ensuring the 
-# underlying pipeline or fit call provides the 'groups' metadata.
-
+# 1. Update the skorch wrapper to use AdamW
 net = NeuralNetBinaryClassifier(
     module=TimeSeriesCNN,
     module__input_channels=6,
     module__output_dim=1,
-    criterion=FloatBCEWithLogitsLoss, 
-    optimizer=AdamW,                  # Swapped to AdamW
-    optimizer__weight_decay=0.01,    # Common default for AdamW
+    criterion=FloatBCEWithLogitsLoss,
+    optimizer=torch.optim.AdamW,  # Switched from Adam to AdamW
+    optimizer__weight_decay=0.01, # Recommended to set a default weight decay for AdamW
     lr=0.001,
     max_epochs=50,
     batch_size=32,
-    # Use GroupedValidSplit: 10% of groups will be used for validation
-    train_split=GroupedValidSplit(0.1), 
+    train_split=ValidSplit(0.1),
     callbacks=[EarlyStopping(patience=10)],
     device='cuda' if torch.cuda.is_available() else 'cpu',
 )
@@ -52,19 +44,14 @@ pipeline_steps = [
     ('cnn', net)
 ]
 
-
-# 2. Define Pipeline Steps
-pipeline_steps = [
-    ('cnn', net)
-]
-
 # 3. Define Parameter Grid
 # You can toggle between architectures from  here
+# 3. Updated Parameter Grid
 param_grid = {
     'cnn__module__num_filters': [16, 32],
     'cnn__module__kernel_size': [3, 5],
-    'cnn__optimizer__weight_decay': [1e-4, 1e-2], # Added weight decay to grid
-    'cnn__lr': [0.01, 0.001]
+    'cnn__lr': [0.01, 0.001],
+    'cnn__optimizer__weight_decay': [1e-4, 1e-2] # Added weight decay tuning
 }
 
 

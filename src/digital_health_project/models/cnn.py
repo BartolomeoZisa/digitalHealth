@@ -138,3 +138,6 @@ class TimeSeriesCNN(nn.Module):
         
         # Return logits (BCEWithLogitsLoss handles the sigmoid internally)
         return self.fc(x).squeeze(-1)
+
+
+
