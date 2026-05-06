@@ -3,7 +3,7 @@
 # Get absolute path to project root (Bart folder)
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-LOG_DIR="$PROJECT_ROOT/logs/cnn_spectrogram_models/$TIMESTAMP"
+LOG_DIR="$PROJECT_ROOT/logs/raw_cnn_models/$TIMESTAMP"
 
 mkdir -p "$LOG_DIR"
 echo "📂 Logs being written to: $LOG_DIR"
@@ -30,9 +30,9 @@ echo "tail $LOG_DIR/*.log to monitor progress in real-time."
 
     declare -a scripts=(
         "experiments/cnnspectrogram/1dcnn.py"
-        "experiments/cnnspectrogram/efficientnet.py"
-        "experiments/cnnspectrogram/efficientnetdelta.py"
-        "experiments/cnnspectrogram/resnet.py"
+        "experiments/cnnspectrogram/eegnet.py"
+        "experiments/cnnspectrogram/fcn.py"
+        "experiments/cnnspectrogram/inceptiontime.py"
     )
 
     pids=()
