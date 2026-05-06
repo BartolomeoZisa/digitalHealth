@@ -25,7 +25,7 @@ net = NeuralNetClassifier(
     device='cuda' if torch.cuda.is_available() else 'cpu',
     callbacks=[
         # Lowered patience slightly; 20 is fine, but 10-15 catches overfitting faster
-        EarlyStopping(monitor='valid_loss', patience=20) 
+        EarlyStopping(monitor='valid_loss', patience=10) 
     ],
 )
 

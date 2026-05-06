@@ -29,6 +29,7 @@ echo "tail $LOG_DIR/*.log to monitor progress in real-time."
     source venv/bin/activate
 
     declare -a scripts=(
+        "experiments/cnnspectrogram/1dcnn.py"
         "experiments/cnnspectrogram/efficientnet.py"
         "experiments/cnnspectrogram/efficientnetdelta.py"
         "experiments/cnnspectrogram/resnet.py"
@@ -67,3 +68,4 @@ disown $MASTER_PID
 
 echo "✅ Master Watcher (PID: $MASTER_PID) is independent."
 echo "🌐 You can safely logout. Summary will be sent to Discord."
+echo "To kill all processes: kill $MASTER_PID && pkill -P $MASTER_PID"
