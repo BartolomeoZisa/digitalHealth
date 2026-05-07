@@ -137,7 +137,11 @@ def run_classification_pipeline(
             fit_params=cv_fit_params
         )
 
-    grid_search.fit(X_raw, y, groups=groups)
+    # Pass cv_fit_params so skorch's ValidSplit receives 'groups' for GroupShuffleSplit
+    # Without this, GridSearchCV forwards 'groups' only to its CV splitter,
+    # not to the pipeline's final estimator (skorch), causing:
+    #   ValueError: The 'groups' parameter should not be None.
+    grid_search.fit(X_raw, y, **cv_fit_params)
 
     pd.DataFrame(cv_results).to_csv(os.path.join(save_dir, f"{experiment_name}_nested_cv.csv"), index=False)
     pd.DataFrame(grid_search.cv_results_).to_csv(os.path.join(save_dir, f"{experiment_name}_grid_search.csv"), index=False)
