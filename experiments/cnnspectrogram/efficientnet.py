@@ -6,6 +6,7 @@ import torch
 from digital_health_project.features.stft import STFTTransformer
 from digital_health_project.models.cnn import MultiBranchCNN
 from digital_health_project.utils.pipeline import run_classification_pipeline
+from sklearn.model_selection import GroupShuffleSplit
 
 TD_PATH = 'data/td/bbt_td_raw_anon.csv'
 UCP_PATH = 'data/ucp/bbt_ucp_raw_anon.csv'
@@ -20,11 +21,11 @@ net = NeuralNetClassifier(
     optimizer__weight_decay=0.01,    # Added L2 regularization
     max_epochs=1000,
     batch_size=32,
-    train_split=ValidSplit(0.1), 
-    device='cuda' if torch.cuda.is_available() else 'cpu',
+    train_split=ValidSplit(cv=GroupShuffleSplit(n_splits=1, test_size=0.1, random_state=42)), 
+    device='cuda' if torch.cuda.is_available() else 'cpu',  
     callbacks=[
         # Lowered patience slightly; 20 is fine, but 10-15 catches overfitting faster
-        EarlyStopping(monitor='valid_loss', patience=10, load_best=True) 
+        EarlyStopping(monitor='valid_loss', patience=20) 
     ],
 )
 
