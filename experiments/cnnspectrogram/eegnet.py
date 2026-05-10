@@ -33,7 +33,7 @@ net = NeuralNetClassifier(
     batch_size=32,
     # Internal validation split using Groups to prevent leakage
     train_split=ValidSplit(cv=GroupShuffleSplit(n_splits=1, test_size=0.1, random_state=42)),
-    callbacks=[EarlyStopping(patience=20)],
+    callbacks=[EarlyStopping(patience=20, load_best=True)],
     device='cuda' if torch.cuda.is_available() else 'cpu',
 )
 
