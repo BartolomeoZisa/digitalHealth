@@ -1,8 +1,28 @@
-results/
-old/
-*.pyc
+# Python bytecode and caches
 __pycache__/
-*.egg-info
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
 venv/
+env/
+
+# Local environment and Streamlit secrets
 .env
-logs/
+.env.*
+.streamlit/secrets.toml
+
+# Test and tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Runtime outputs outside the documented sprint figures
+results/

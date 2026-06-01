@@ -1,0 +1,16 @@
+# Chosen artifact-filter configuration (Sprint 2 ablation, k + overlap)
+# Grid: k in [3.0, 4.0, 5.0, 7.0], scales in [0.5, 1.0, 2.0], overlap in [0.25, 0.5, 0.75]
+# Selection rule:
+#   (1) keep windows with pct_calm >= 70.0% on >= 80.0% of combos;
+#   (2) UCP4 jerk threshold < 80 g/s (known spike must remain outlier);
+#   (3) among ties, prefer the most conservative k;
+#   (4) among ties on overlap, prefer 50% (better MAD independence, lower cost, equivalent detection at the scales used).
+k = 7.0
+overlap = 0.5
+min_n_calm = 50
+scales_s = [0.5, 1.0, 2.0]
+
+# n_calm distribution at chosen config:
+# p5  = 50
+# p10 = 53
+# median = 113

@@ -1,0 +1,6 @@
+# Sprint-5 chosen MM-rule cutoffs
+# Selected feature set: selected
+# Best Youden J = 0.716 (sensitivity_ucp=0.824, specificity_td=0.893)
+ENSEMBLE_THRESHOLD = 0.7
+ASYM_MM_CUTOFF = 0.6
+XCORR_MM_CUTOFF = 0.4
